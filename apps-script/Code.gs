@@ -31,7 +31,9 @@ var MIN_PASSWORD_LENGTH = 6;
 var TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
 var MAX_FAILED_LOGINS = 5;
 var LOCKOUT_SECONDS = 5 * 60;
-var LIST_CACHE_TTL_SECONDS = 120; // แก้ชีตด้วยมือโดยตรง จะเห็นในแอปภายใน 2 นาที
+// ทุกการเพิ่ม/แก้/ลบผ่านแอปจะอัปเดตแคชนี้ทันที จึงเก็บได้นาน (สูงสุดที่ CacheService ให้คือ 6 ชั่วโมง)
+// ถ้าแก้ข้อมูลในชีตด้วยมือโดยตรง ให้กดปุ่ม "รีเฟรช" ในแอป (อ่านสดจากชีต) หรือรอแคชหมดอายุ
+var LIST_CACHE_TTL_SECONDS = 6 * 60 * 60;
 var CACHE_CHUNK_CHARS = 30000; // CacheService เก็บได้ 100KB ต่อค่า (ภาษาไทย 3 ไบต์/ตัวอักษร)
 
 var HEADERS = [
@@ -58,7 +60,8 @@ function doGet(e) {
   try {
     var action = (e && e.parameter && e.parameter.action) || 'list';
     if (action === 'list') {
-      var json = getCachedListJson_();
+      // fresh=1 (ปุ่มรีเฟรชในแอป) ข้ามแคชและอ่านสดจากชีต
+      var json = e.parameter.fresh === '1' ? null : getCachedListJson_();
       if (json === null) {
         json = JSON.stringify(readAllPermits_(getSheet_()));
         putCachedListJson_(json);

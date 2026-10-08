@@ -100,10 +100,11 @@ function toPermits(json: ApiResponse): ParkingPermit[] {
   return data.map(normalizePermit);
 }
 
-export async function fetchPermits(): Promise<ParkingPermit[]> {
+/** `fresh` skips the script's cache and reads the sheet itself (used by the refresh button) */
+export async function fetchPermits(fresh = false): Promise<ParkingPermit[]> {
   const url = requireUrl();
   const sep = url.includes('?') ? '&' : '?';
-  const get = () => request(`${url}${sep}action=list`);
+  const get = () => request(`${url}${sep}action=list${fresh ? '&fresh=1' : ''}`);
   try {
     return toPermits(await get());
   } catch (err) {

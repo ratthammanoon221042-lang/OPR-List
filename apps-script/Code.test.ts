@@ -118,7 +118,7 @@ function createEnvironment() {
 
   const post = (body: Record<string, unknown>) =>
     JSON.parse(api.doPost({ postData: { contents: JSON.stringify(body) } }).getContent());
-  const list = () => JSON.parse(api.doGet({ parameter: { action: 'list' } }).getContent());
+  const list = (extra: Record<string, string> = {}) => JSON.parse(api.doGet({ parameter: { action: 'list', ...extra } }).getContent());
 
   return { api, post, list, sheets, props, cache, sheetReads };
 }
@@ -254,6 +254,15 @@ describe('Code.gs', () => {
 
       t.post({ action: 'add', token, permit: permit({ id: 'B', licensePlate: '2ขค1111' }) });
       expect(t.list().data).toHaveLength(2);
+    });
+
+    it('fresh=1 bypasses the cache so hand edits in the sheet show up', () => {
+      t.post({ action: 'add', token, permit: permit({ id: 'A' }) });
+      const sheet = t.sheets.get('รายการขอจอดรถ')!;
+      sheet.data.push(['H1', '9ฮฮ9999', 'กรุงเทพมหานคร', 'B1', 'Kia', 'เทา', '-', '-', '2026-10-08', '2026-10-08', '']);
+      expect(t.list().data.map((p: { id: string }) => p.id)).toEqual(['A']); // still the cached list
+      expect(t.list({ fresh: '1' }).data.map((p: { id: string }) => p.id)).toEqual(['A', 'H1']);
+      expect(t.list().data.map((p: { id: string }) => p.id)).toEqual(['A', 'H1']); // cache refreshed by the fresh read
     });
 
     it('falls back to the sheet when the cache is empty', () => {

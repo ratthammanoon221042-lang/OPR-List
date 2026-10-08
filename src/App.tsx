@@ -102,7 +102,7 @@ export default function App() {
     lastRefreshAt.current = startedAt;
     if (showSpinner) setSyncState('syncing');
     try {
-      const data = await fetchPermits();
+      const data = await fetchPermits(showSpinner);
       if (seq !== refreshSeq.current || pendingWrites.current > 0 || epoch !== writeEpoch.current) return;
       setPermits(data);
       setLastSyncedAt(new Date());
