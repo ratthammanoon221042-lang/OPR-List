@@ -112,3 +112,102 @@ describe('fetchPermits retry policy', () => {
     expect(String(fetchMock.mock.calls[1][0])).toContain('fresh=1');
   });
 });
+
+describe('relay (Cloudflare Worker) in front of the script', () => {
+  const PROXY = 'https://relay.example.workers.dev';
+  const SCRIPT_HOST = 'script.google.com';
+
+  const load = async (proxy: string | null) => {
+    vi.resetModules();
+    vi.stubEnv('VITE_PROXY_URL', proxy ?? '');
+    return import('./sheetApi');
+  };
+  const hostsCalled = (m: ReturnType<typeof vi.fn>) => m.mock.calls.map(([u]) => new URL(String(u)).host);
+  const okList = () => reply(200, { status: 'success', data: [] });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+  });
+
+  it('with no relay configured, only the script is called', async () => {
+    const api = await load(null);
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(okList()));
+    vi.stubGlobal('fetch', fetchMock);
+    await api.fetchPermits();
+    expect(hostsCalled(fetchMock)).toEqual([SCRIPT_HOST]);
+  });
+
+  it('goes through the relay first (same query, same body)', async () => {
+    const api = await load(PROXY);
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(okList()));
+    vi.stubGlobal('fetch', fetchMock);
+    await api.fetchPermits(true);
+    expect(String(fetchMock.mock.calls[0][0])).toBe(`${PROXY}?action=list&fresh=1`);
+    await api.addPermit('tok', permit);
+    expect(fetchMock.mock.calls[1][0]).toBe(PROXY);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({ action: 'add', token: 'tok' });
+    expect(hostsCalled(fetchMock)).toEqual(['relay.example.workers.dev', 'relay.example.workers.dev']);
+  });
+
+  it('falls back to the script when the relay cannot be reached, then keeps using the script for a while', async () => {
+    vi.useFakeTimers();
+    const api = await load(PROXY);
+    const fetchMock = vi.fn().mockImplementation((url: string) =>
+      new URL(String(url)).host === SCRIPT_HOST ? Promise.resolve(okList()) : Promise.reject(new TypeError('relay down'))
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await api.fetchPermits();
+    expect(hostsCalled(fetchMock)).toEqual(['relay.example.workers.dev', SCRIPT_HOST]);
+
+    fetchMock.mockClear();
+    await api.fetchPermits();
+    expect(hostsCalled(fetchMock)).toEqual([SCRIPT_HOST]); // cooldown: the relay is not tried first
+
+    vi.setSystemTime(Date.now() + 2 * 60_000 + 1000);
+    fetchMock.mockClear();
+    await api.fetchPermits();
+    expect(hostsCalled(fetchMock)[0]).toBe('relay.example.workers.dev'); // tried again after the cooldown
+  });
+
+  it('a relay error status (502/504) also falls back', async () => {
+    const api = await load(PROXY);
+    const fetchMock = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(new URL(String(url)).host === SCRIPT_HOST ? okList() : reply(502, { status: 'error', code: 'server_error' }))
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await api.fetchPermits()).toEqual([]);
+    expect(hostsCalled(fetchMock)).toEqual(['relay.example.workers.dev', SCRIPT_HOST]);
+  });
+
+  it('a real answer from the script through the relay is final: no second request', async () => {
+    const api = await load(PROXY);
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(reply(200, { status: 'error', code: 'invalid_password', message: 'รหัสผ่านไม่ถูกต้อง' }))
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const err = await messageOf(api.login('wrong'));
+    expect(err.code).toBe('invalid_password');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('adding / editing / deleting may be sent on to the script after the relay failed (safe to repeat by id)', async () => {
+    const api = await load(PROXY);
+    const fetchMock = vi.fn().mockImplementation((url: string) =>
+      new URL(String(url)).host === SCRIPT_HOST ? Promise.resolve(okList()) : Promise.reject(new TypeError('relay down'))
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    await api.deletePermit('tok', 'A');
+    expect(hostsCalled(fetchMock)).toEqual(['relay.example.workers.dev', SCRIPT_HOST]);
+  });
+
+  it('changing the password is never sent twice', async () => {
+    const api = await load(PROXY);
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError('relay down'));
+    vi.stubGlobal('fetch', fetchMock);
+    await messageOf(api.changePassword('tok', 'old', 'newer-pass'));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(hostsCalled(fetchMock)).toEqual(['relay.example.workers.dev']);
+  });
+});

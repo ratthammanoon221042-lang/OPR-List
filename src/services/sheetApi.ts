@@ -11,8 +11,19 @@ import { loadLastSynced } from '../utils/storage';
 const DEFAULT_APPS_SCRIPT_URL =
   'https://script.google.com/macros/s/AKfycbwvZxrFsXHIp63NvyMDQi-QgmPxJ2deHpxWjpMhEQlKBiyNFiMjJrBHMWOpC0gxgINAqQ/exec';
 
+/**
+ * Optional relay (cloudflare-worker/): the browser talks to Cloudflare, and Cloudflare talks to Google.
+ * Leave empty to call the script directly. If the relay fails, the app falls back to the script itself.
+ */
+const DEFAULT_PROXY_URL = '';
+
 // Apps Script can need a while to wake up after being idle
 const REQUEST_TIMEOUT_MS = 45_000;
+// The relay answers within ~25 s at most (its own limit): do not wait longer before using the direct route
+const PROXY_TIMEOUT_MS = 30_000;
+// After the relay failed, use the direct route for a while instead of trying the relay first every time
+const PROXY_COOLDOWN_MS = 2 * 60_000;
+let proxyDownUntil = 0;
 
 export type ApiErrorCode =
   | 'unauthorized'
@@ -28,11 +39,14 @@ export class ApiError extends Error {
   code: ApiErrorCode;
   /** True when we gave up waiting (as opposed to the connection failing quickly) */
   timedOut: boolean;
-  constructor(code: ApiErrorCode, message: string, timedOut = false) {
+  /** True when the request did not get a proper answer at all (no connection, error status, not JSON) */
+  transport: boolean;
+  constructor(code: ApiErrorCode, message: string, timedOut = false, transport = code === 'network') {
     super(message);
     this.name = 'ApiError';
     this.code = code;
     this.timedOut = timedOut;
+    this.transport = transport;
   }
 }
 
@@ -60,6 +74,10 @@ export function getAppsScriptUrl(): string {
   return (import.meta.env.VITE_APPS_SCRIPT_URL as string | undefined)?.trim() || DEFAULT_APPS_SCRIPT_URL;
 }
 
+export function getProxyUrl(): string {
+  return (import.meta.env.VITE_PROXY_URL as string | undefined)?.trim() || DEFAULT_PROXY_URL;
+}
+
 interface ApiResponse {
   status: 'success' | 'error';
   code?: ApiErrorCode;
@@ -67,22 +85,24 @@ interface ApiResponse {
   [key: string]: unknown;
 }
 
-async function request(url: string, init?: RequestInit): Promise<ApiResponse> {
+async function request(url: string, init?: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<ApiResponse> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(url, { ...init, signal: controller.signal });
     if (!res.ok) {
       throw new ApiError(
         'server_error',
-        `Google Sheet ตอบกลับผิดปกติ (HTTP ${res.status})${res.status === 404 ? setupHint() : ''}`
+        `Google Sheet ตอบกลับผิดปกติ (HTTP ${res.status})${res.status === 404 ? setupHint() : ''}`,
+        false,
+        true
       );
     }
     let json: ApiResponse;
     try {
       json = (await res.json()) as ApiResponse;
     } catch {
-      throw new ApiError('server_error', `Google Sheet ตอบกลับไม่ใช่ข้อมูลที่ถูกต้อง${setupHint()}`);
+      throw new ApiError('server_error', `Google Sheet ตอบกลับไม่ใช่ข้อมูลที่ถูกต้อง${setupHint()}`, false, true);
     }
     if (json.status !== 'success') {
       throw new ApiError(json.code ?? 'server_error', json.message ?? 'เกิดข้อผิดพลาดจากเซิร์ฟเวอร์');
@@ -105,13 +125,43 @@ function requireUrl(): string {
   return url;
 }
 
+/**
+ * Sends one request: through the relay first when there is one, and if the relay gives no proper
+ * answer, straight to the script. A real answer from the script (even "wrong password") is never retried.
+ */
+async function send(
+  build: (base: string) => string,
+  init?: RequestInit,
+  { fallback = true }: { fallback?: boolean } = {}
+): Promise<ApiResponse> {
+  const direct = requireUrl();
+  const proxy = getProxyUrl();
+  const useProxy = proxy !== '' && Date.now() >= proxyDownUntil;
+
+  if (!useProxy) return request(build(direct), init);
+
+  try {
+    return await request(build(proxy), init, PROXY_TIMEOUT_MS);
+  } catch (err) {
+    if (!(isApiError(err) && err.transport)) throw err;
+    proxyDownUntil = Date.now() + PROXY_COOLDOWN_MS;
+    if (!fallback) throw err;
+    return request(build(direct), init);
+  }
+}
+
 // text/plain avoids a CORS preflight, which Apps Script web apps do not answer
 const post = (payload: Record<string, unknown>) =>
-  request(requireUrl(), {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(payload),
-  });
+  send(
+    (base) => base,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload),
+    },
+    // Changing the password is the one request that cannot safely be sent twice
+    { fallback: payload.action !== 'changePassword' }
+  );
 
 function toPermits(json: ApiResponse): ParkingPermit[] {
   const data = json.data;
@@ -121,9 +171,8 @@ function toPermits(json: ApiResponse): ParkingPermit[] {
 
 /** `fresh` skips the script's cache and reads the sheet itself (used by the refresh button) */
 export async function fetchPermits(fresh = false): Promise<ParkingPermit[]> {
-  const url = requireUrl();
-  const sep = url.includes('?') ? '&' : '?';
-  const get = () => request(`${url}${sep}action=list${fresh ? '&fresh=1' : ''}`);
+  const get = () =>
+    send((base) => `${base}${base.includes('?') ? '&' : '?'}action=list${fresh ? '&fresh=1' : ''}`);
   try {
     return toPermits(await get());
   } catch (err) {
