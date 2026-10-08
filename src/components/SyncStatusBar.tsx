@@ -1,14 +1,13 @@
 import React from 'react';
-import { RefreshCw, CloudOff, Cloud, AlertTriangle } from 'lucide-react';
+import { RefreshCw, Cloud, AlertTriangle } from 'lucide-react';
 
-export type SyncState = 'local' | 'syncing' | 'ok' | 'error';
+export type SyncState = 'syncing' | 'ok' | 'error';
 
 interface SyncStatusBarProps {
   state: SyncState;
   lastSyncedAt: Date | null;
   errorMessage: string;
   onRefresh: () => void;
-  onOpenSettings: () => void;
 }
 
 export const SyncStatusBar: React.FC<SyncStatusBarProps> = ({
@@ -16,26 +15,7 @@ export const SyncStatusBar: React.FC<SyncStatusBarProps> = ({
   lastSyncedAt,
   errorMessage,
   onRefresh,
-  onOpenSettings,
 }) => {
-  if (state === 'local') {
-    return (
-      <div className="flex flex-wrap items-center gap-2 px-3.5 py-2.5 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 text-xs">
-        <CloudOff className="w-4 h-4 shrink-0" />
-        <span className="flex-1 min-w-48">
-          ยังไม่ได้เชื่อมต่อ Google Sheet: ข้อมูลถูกเก็บในเครื่องนี้เท่านั้น เครื่องอื่นจะไม่เห็นและล้างข้อมูลเบราว์เซอร์แล้วจะหาย
-        </span>
-        <button
-          type="button"
-          onClick={onOpenSettings}
-          className="px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-semibold cursor-pointer"
-        >
-          ตั้งค่าการเชื่อมต่อ
-        </button>
-      </div>
-    );
-  }
-
   const isError = state === 'error';
   return (
     <div

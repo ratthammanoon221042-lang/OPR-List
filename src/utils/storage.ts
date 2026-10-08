@@ -43,26 +43,3 @@ export function setAuthToken(token: string | null): void {
     console.error('Failed to store auth token', e);
   }
 }
-
-// Records that were only ever saved on this device (before a Google Sheet was connected).
-// Kept aside so the user can upload them to the sheet instead of losing them.
-const LOCAL_ONLY_KEY = 'thai_overnight_local_only_v1';
-
-export function loadLocalOnlyPermits(): ParkingPermit[] {
-  try {
-    const raw = localStorage.getItem(LOCAL_ONLY_KEY);
-    const parsed: unknown = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.map(normalizePermit) : [];
-  } catch {
-    return [];
-  }
-}
-
-export function saveLocalOnlyPermits(permits: ParkingPermit[]): void {
-  try {
-    if (permits.length > 0) localStorage.setItem(LOCAL_ONLY_KEY, JSON.stringify(permits));
-    else localStorage.removeItem(LOCAL_ONLY_KEY);
-  } catch (e) {
-    console.error('Failed to store local-only permits', e);
-  }
-}

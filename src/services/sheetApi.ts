@@ -1,15 +1,15 @@
 import { ParkingPermit } from '../types/parking';
 import { normalizePermit } from '../utils/permit';
-import appsScriptCode from '../../apps-script/Code.gs?raw';
 
 /**
  * Client for the Google Apps Script backend (apps-script/Code.gs).
  * The Google Sheet behind the script is the single source of truth.
  */
 
-export const GOOGLE_APPS_SCRIPT_CODE: string = appsScriptCode;
+/** Web app URL of the deployed apps-script/Code.gs (the Google Sheet backend) */
+const DEFAULT_APPS_SCRIPT_URL =
+  'https://script.google.com/macros/s/AKfycbwa37UQKqxDALMTZTxjeGkG1Nz_ZWAYFIU-_Y827Kfni0vJVJNoQsf3kazg6lTkzAlRgQ/exec';
 
-const URL_STORAGE_KEY = 'thai_overnight_apps_script_url_v2';
 const REQUEST_TIMEOUT_MS = 25_000;
 
 export type ApiErrorCode =
@@ -33,33 +33,9 @@ export class ApiError extends Error {
 
 export const isApiError = (e: unknown): e is ApiError => e instanceof ApiError;
 
-/** A URL baked in at build time (VITE_APPS_SCRIPT_URL) is used until the user saves their own */
+/** VITE_APPS_SCRIPT_URL (e.g. to point a test build at another deployment) wins over the default */
 export function getAppsScriptUrl(): string {
-  try {
-    const stored = localStorage.getItem(URL_STORAGE_KEY);
-    if (stored) return stored;
-  } catch {
-    // storage unavailable (private mode etc.)
-  }
-  return (import.meta.env.VITE_APPS_SCRIPT_URL as string | undefined)?.trim() || '';
-}
-
-export function setAppsScriptUrl(url: string | null): void {
-  try {
-    if (url && url.trim()) localStorage.setItem(URL_STORAGE_KEY, url.trim());
-    else localStorage.removeItem(URL_STORAGE_KEY);
-  } catch (e) {
-    console.error('Failed to save Apps Script URL', e);
-  }
-}
-
-export function isValidAppsScriptUrl(url: string): boolean {
-  try {
-    const u = new URL(url.trim());
-    return u.protocol === 'https:' && u.hostname === 'script.google.com' && /\/exec\/?$/.test(u.pathname);
-  } catch {
-    return false;
-  }
+  return (import.meta.env.VITE_APPS_SCRIPT_URL as string | undefined)?.trim() || DEFAULT_APPS_SCRIPT_URL;
 }
 
 interface ApiResponse {
@@ -113,11 +89,6 @@ const post = (payload: Record<string, unknown>) =>
     body: JSON.stringify(payload),
   });
 
-export async function pingAppsScript(url: string): Promise<void> {
-  const sep = url.includes('?') ? '&' : '?';
-  await request(`${url}${sep}action=ping&t=${Date.now()}`);
-}
-
 export async function fetchPermits(): Promise<ParkingPermit[]> {
   const url = requireUrl();
   const sep = url.includes('?') ? '&' : '?';
@@ -157,11 +128,3 @@ export const updatePermit = (token: string, permit: ParkingPermit) =>
 
 export const deletePermit = (token: string, id: string) =>
   post({ action: 'delete', token, id }).then(() => undefined);
-
-export async function importPermits(
-  token: string,
-  permits: ParkingPermit[]
-): Promise<{ added: number; skipped: number }> {
-  const json = await post({ action: 'import', token, permits });
-  return { added: Number(json.added ?? 0), skipped: Number(json.skipped ?? 0) };
-}

@@ -1,11 +1,9 @@
 import React from 'react';
-import { Plus, FileText, Car, LogIn, LogOut, CheckCircle2, Settings } from 'lucide-react';
+import { Plus, FileText, Car, LogIn, LogOut, CheckCircle2, KeyRound } from 'lucide-react';
 
 interface HeaderProps {
-  /** Connected to a Google Sheet, so a password is required to change data */
-  requiresLogin: boolean;
   isAuthenticated: boolean;
-  onOpenSettings: () => void;
+  onOpenChangePassword: () => void;
   onOpenLogin: () => void;
   onOpenNewRequest: () => void;
   onLogout: () => void;
@@ -13,9 +11,8 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({
-  requiresLogin,
   isAuthenticated,
-  onOpenSettings,
+  onOpenChangePassword,
   onOpenLogin,
   onOpenNewRequest,
   onLogout,
@@ -36,7 +33,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <h1 className="text-lg sm:text-xl font-bold tracking-tight text-white">
                   รายการขออนุญาตจอดค้างคืน
                 </h1>
-                {requiresLogin && isAuthenticated && (
+                {isAuthenticated && (
                   <span className="hidden md:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[11px] font-medium">
                     <CheckCircle2 className="w-3 h-3" />
                     <span>เข้าสู่ระบบแล้ว</span>
@@ -89,30 +86,27 @@ export const Header: React.FC<HeaderProps> = ({
                   <span>เพิ่มรายการขออนุญาต</span>
                 </button>
 
-                {/* ปุ่มออกจากระบบ (แสดงเมื่อเชื่อมต่อชีตและต้องล็อกอินเท่านั้น) */}
-                {requiresLogin && (
-                  <button
-                    type="button"
-                    onClick={onLogout}
-                    className="inline-flex items-center gap-1 px-2.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-medium rounded-xl transition-colors cursor-pointer"
-                    title="ออกจากระบบบันทึกข้อมูล"
-                  >
-                    <LogOut className="w-3.5 h-3.5 text-slate-400" />
-                    <span className="hidden sm:inline">ออกจากระบบ</span>
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={onOpenChangePassword}
+                  className="inline-flex items-center gap-1 px-2.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-medium rounded-xl transition-colors cursor-pointer"
+                  title="เปลี่ยนรหัสผ่าน"
+                >
+                  <KeyRound className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="hidden sm:inline">เปลี่ยนรหัสผ่าน</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={onLogout}
+                  className="inline-flex items-center gap-1 px-2.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-medium rounded-xl transition-colors cursor-pointer"
+                  title="ออกจากระบบบันทึกข้อมูล"
+                >
+                  <LogOut className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="hidden sm:inline">ออกจากระบบ</span>
+                </button>
               </>
             )}
-
-            <button
-              type="button"
-              onClick={onOpenSettings}
-              className="inline-flex items-center gap-1 px-2.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-medium rounded-xl transition-colors cursor-pointer"
-              title="ตั้งค่า Google Sheet และรหัสผ่าน"
-            >
-              <Settings className="w-4 h-4 text-slate-400" />
-              <span className="hidden sm:inline">ตั้งค่า</span>
-            </button>
           </div>
         </div>
       </div>

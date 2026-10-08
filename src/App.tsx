@@ -5,20 +5,16 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ParkingPermit } from './types/parking';
+import { loadCachedPermits, saveCachedPermits, getAuthToken, setAuthToken } from './utils/storage';
 import {
-  loadCachedPermits, saveCachedPermits, getAuthToken, setAuthToken,
-  saveLocalOnlyPermits,
-} from './utils/storage';
-import {
-  getAppsScriptUrl, setAppsScriptUrl, fetchPermits, addPermit, updatePermit, deletePermit,
-  logout as logoutRequest, isApiError,
+  fetchPermits, addPermit, updatePermit, deletePermit, logout as logoutRequest, isApiError,
 } from './services/sheetApi';
 import { Header } from './components/Header';
 import { OvernightParkingDashboard } from './components/OvernightParkingDashboard';
 import { RequestFormModal } from './components/RequestFormModal';
 import { SecurityChecklistModal } from './components/SecurityChecklistModal';
 import { EmployerLoginModal } from './components/EmployerLoginModal';
-import { SettingsModal } from './components/SettingsModal';
+import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { SyncStatusBar, SyncState } from './components/SyncStatusBar';
 import { PrintReport } from './components/PrintReport';
 import { ConfirmModal } from './components/ConfirmModal';
@@ -34,12 +30,9 @@ export default function App() {
   const [permits, setPermits] = useState<ParkingPermit[]>(() => loadCachedPermits());
   const [selectedDate, setSelectedDate] = useState<string>(() => getTodayDateString());
 
-  // Connection to the Google Sheet (via Apps Script) and the logged-in session
-  const [connectedUrl, setConnectedUrl] = useState<string>(() => getAppsScriptUrl());
+  // Logged-in session; reading is open to everyone, changing data needs the password
   const [token, setTokenState] = useState<string | null>(() => getAuthToken());
-  const connected = !!connectedUrl;
-  // Without a sheet the app is a single-device notebook and needs no password
-  const canEdit = !connected || !!token;
+  const canEdit = !!token;
 
   const [syncState, setSyncState] = useState<SyncState>('syncing');
   const [syncError, setSyncError] = useState('');
@@ -50,7 +43,7 @@ export default function App() {
   const [editingPermit, setEditingPermit] = useState<ParkingPermit | null>(null);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [permitToDelete, setPermitToDelete] = useState<ParkingPermit | null>(null);
 
   // What to do once the user has logged in (open the form, ask to delete, ...)
@@ -91,7 +84,7 @@ export default function App() {
   const lastRefreshAt = useRef(0);
 
   const refresh = useCallback(async (showSpinner = false) => {
-    if (!getAppsScriptUrl() || pendingWrites.current > 0) return;
+    if (pendingWrites.current > 0) return;
     const seq = ++refreshSeq.current;
     const epoch = writeEpoch.current;
     lastRefreshAt.current = Date.now();
@@ -111,7 +104,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!connectedUrl) return;
     // refresh() only sets state after the network request resolves
     // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh();
@@ -133,7 +125,7 @@ export default function App() {
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [connectedUrl, refresh]);
+  }, [refresh]);
 
   // ---------------------------------------------------------------
   // Writes: update the screen at once, save to the sheet, undo and tell the user if it fails.
@@ -150,11 +142,6 @@ export default function App() {
     success: string;
     failure: string;
   }) => {
-    if (!connected) {
-      setPermits(opts.apply);
-      showToast(`${opts.success} (เก็บในเครื่องนี้)`, 'success');
-      return;
-    }
     if (!token) {
       showToast('กรุณาเข้าสู่ระบบก่อนบันทึกข้อมูล', 'error');
       return;
@@ -258,24 +245,6 @@ export default function App() {
     showToast('ออกจากระบบเรียบร้อยแล้ว', 'info');
   };
 
-  const handleSaveUrl = (url: string) => {
-    // Records that exist only on this device are set aside so they can be uploaded to the sheet
-    if (!connected && permits.length > 0) {
-      saveLocalOnlyPermits(permits);
-      showToast(`พบข้อมูลในเครื่อง ${permits.length} รายการ นำขึ้นชีตได้ที่เมนูตั้งค่า`, 'info');
-    }
-    setAppsScriptUrl(url);
-    setToken(null);
-    setConnectedUrl(url);
-    setSyncState('syncing');
-  };
-
-  const handleDisconnect = () => {
-    setAppsScriptUrl(null);
-    setConnectedUrl('');
-    setToken(null);
-  };
-
   // Printing: render the report first, then open the print dialog
   const requestPrint = (date: string) => setPrintRequest((prev) => ({ date, n: (prev?.n ?? 0) + 1 }));
   useEffect(() => {
@@ -284,27 +253,23 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [printRequest]);
 
-  const displayedSyncState: SyncState = connected ? syncState : 'local';
-
   return (
     <div id="app-root" className="min-h-screen bg-slate-100/80 flex flex-col font-sans text-slate-800">
       <Header
-        requiresLogin={connected}
         isAuthenticated={canEdit}
         onOpenLogin={() => requireLogin(openNewRequestForm)}
         onOpenNewRequest={handleOpenAddRequest}
         onLogout={handleLogout}
         onOpenPrintModal={() => setIsPrintModalOpen(true)}
-        onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenChangePassword={() => setIsPasswordModalOpen(true)}
       />
 
       <main className="flex-1 max-w-6xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-5 space-y-4">
         <SyncStatusBar
-          state={displayedSyncState}
+          state={syncState}
           lastSyncedAt={lastSyncedAt}
           errorMessage={syncError}
           onRefresh={() => refresh(true)}
-          onOpenSettings={() => setIsSettingsOpen(true)}
         />
 
         <OvernightParkingDashboard
@@ -356,15 +321,15 @@ export default function App() {
         onPrint={requestPrint}
       />
 
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
+      <ChangePasswordModal
+        isOpen={isPasswordModalOpen}
         token={token}
-        onSaveUrl={handleSaveUrl}
-        onDisconnect={handleDisconnect}
-        onRequestLogin={() => requireLogin(() => undefined)}
-        onTokenChanged={setToken}
-        onImported={refresh}
+        onClose={() => setIsPasswordModalOpen(false)}
+        onChanged={(newToken) => {
+          setToken(newToken);
+          setIsPasswordModalOpen(false);
+          showToast('เปลี่ยนรหัสผ่านเรียบร้อยแล้ว', 'success');
+        }}
       />
 
       <ConfirmModal
