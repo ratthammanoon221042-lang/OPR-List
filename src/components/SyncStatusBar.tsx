@@ -9,6 +9,8 @@ interface SyncStatusBarProps {
   lastSyncedAt: Date | null;
   /** How long the last successful request took, to tell a slow Google from a broken setup */
   lastDurationMs: number | null;
+  /** How the latest request travelled: through the relay or straight to the script */
+  route?: 'relay' | 'direct' | null;
   errorMessage: string;
   onRefresh: () => void;
 }
@@ -17,6 +19,7 @@ export const SyncStatusBar: React.FC<SyncStatusBarProps> = ({
   state,
   lastSyncedAt,
   lastDurationMs,
+  route,
   errorMessage,
   onRefresh,
 }) => {
@@ -25,7 +28,8 @@ export const SyncStatusBar: React.FC<SyncStatusBarProps> = ({
   const time = lastSyncedAt
     ? lastSyncedAt.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
     : null;
-  const speed = lastDurationMs !== null ? ` (ตอบใน ${(lastDurationMs / 1000).toFixed(1)} วินาที)` : '';
+  const routeText = route === 'relay' ? ' · ผ่านตัวกลาง' : route === 'direct' ? ' · เรียกตรง' : '';
+  const speed = lastDurationMs !== null ? ` (ตอบใน ${(lastDurationMs / 1000).toFixed(1)} วินาที${routeText})` : '';
 
   let message: string;
   if (isError) {

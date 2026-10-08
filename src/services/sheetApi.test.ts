@@ -176,6 +176,26 @@ describe('relay (Cloudflare Worker) in front of the script', () => {
     expect(hostsCalled(fetchMock)[0]).toBe('relay.example.workers.dev'); // tried again after the cooldown
   });
 
+  it('remembers which way the latest request travelled', async () => {
+    const api = await load(PROXY);
+    expect(api.getLastRoute()).toBeNull();
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(okList())));
+    await api.fetchPermits();
+    expect(api.getLastRoute()).toBe('relay');
+
+    const api2 = await load(PROXY);
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) =>
+      new URL(String(url)).host === SCRIPT_HOST ? Promise.resolve(okList()) : Promise.reject(new TypeError('relay down'))
+    ));
+    await api2.fetchPermits();
+    expect(api2.getLastRoute()).toBe('direct');
+
+    const api3 = await load(null);
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(okList())));
+    await api3.fetchPermits();
+    expect(api3.getLastRoute()).toBe('direct');
+  });
+
   it('a relay error status (502/504) also falls back', async () => {
     const api = await load(PROXY);
     const fetchMock = vi.fn().mockImplementation((url: string) =>

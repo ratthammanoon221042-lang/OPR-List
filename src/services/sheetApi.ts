@@ -25,6 +25,11 @@ const PROXY_TIMEOUT_MS = 30_000;
 const PROXY_COOLDOWN_MS = 2 * 60_000;
 let proxyDownUntil = 0;
 
+export type Route = 'relay' | 'direct';
+let lastRoute: Route | null = null;
+/** Which way the latest successful request travelled (shown next to the sync time) */
+export const getLastRoute = (): Route | null => lastRoute;
+
 export type ApiErrorCode =
   | 'unauthorized'
   | 'invalid_password'
@@ -140,15 +145,23 @@ async function send(
   const proxy = getProxyUrl();
   const useProxy = proxy !== '' && Date.now() >= proxyDownUntil;
 
-  if (!useProxy) return request(build(direct), init);
+  if (!useProxy) {
+    const res = await request(build(direct), init);
+    lastRoute = 'direct';
+    return res;
+  }
 
   try {
-    return await request(build(proxy), init, PROXY_TIMEOUT_MS);
+    const res = await request(build(proxy), init, PROXY_TIMEOUT_MS);
+    lastRoute = 'relay';
+    return res;
   } catch (err) {
     if (!(isApiError(err) && err.transport)) throw err;
     proxyDownUntil = Date.now() + PROXY_COOLDOWN_MS;
     if (!fallback) throw err;
-    return request(build(direct), init);
+    const res = await request(build(direct), init);
+    lastRoute = 'direct';
+    return res;
   }
 }
 

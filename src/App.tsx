@@ -9,7 +9,7 @@ import {
   loadCachedPermits, saveCachedPermits, getAuthToken, setAuthToken, loadLastSynced, saveLastSynced,
 } from './utils/storage';
 import {
-  fetchPermits, addPermit, updatePermit, deletePermit, isApiError, isOutcomeUnknown,
+  fetchPermits, addPermit, updatePermit, deletePermit, isApiError, isOutcomeUnknown, getLastRoute,
 } from './services/sheetApi';
 import { Header } from './components/Header';
 import { OvernightParkingDashboard } from './components/OvernightParkingDashboard';
@@ -23,8 +23,9 @@ import { ConfirmModal } from './components/ConfirmModal';
 import { formatThaiDate, getTodayDateString, isPermitActiveOnDate } from './utils/dateUtils';
 import { renderReportPages } from './utils/pdfGenerator';
 import { attemptWrite } from './utils/confirmedWrite';
+import { APP_VERSION, fetchLatestVersion, reloadWithNewVersion } from './utils/appVersion';
 import { samePermitContent } from './utils/permit';
-import { CheckCircle2, AlertCircle, AlertTriangle, XCircle } from 'lucide-react';
+import { CheckCircle2, AlertCircle, AlertTriangle, XCircle, RefreshCw } from 'lucide-react';
 
 type ToastType = 'success' | 'info' | 'warning' | 'error';
 
@@ -35,6 +36,8 @@ const FOCUS_REFRESH_MIN_GAP_MS = 60_000;
 const ERROR_AFTER_FAILURES = 3;
 // After a failed check, try again soon (10 s, 30 s, then every minute) instead of waiting for the next 5-minute check
 const RETRY_DELAYS_MS = [10_000, 30_000, 60_000];
+// How often (at most) an open page checks whether a newer version of the app was published
+const VERSION_CHECK_MIN_GAP_MS = 5 * 60_000;
 
 export default function App() {
   const [permits, setPermits] = useState<ParkingPermit[]>(() => loadCachedPermits());
@@ -47,6 +50,9 @@ export default function App() {
   const [syncState, setSyncState] = useState<SyncState>('syncing');
   const [syncError, setSyncError] = useState('');
   const [lastDurationMs, setLastDurationMs] = useState<number | null>(null);
+  const [route, setRoute] = useState<'relay' | 'direct' | null>(null);
+  // A newer version of the app has been published than the one running in this page
+  const [newerVersion, setNewerVersion] = useState<string | null>(null);
   const failedRefreshes = useRef(0);
   // When the sheet last confirmed this list (kept across visits, shown on reports)
   const [lastSyncedAt, setLastSyncedAtState] = useState<Date | null>(() => loadLastSynced());
@@ -113,6 +119,7 @@ export default function App() {
       setPermits(data);
       setLastSyncedAt(new Date());
       setLastDurationMs(Date.now() - startedAt);
+      setRoute(getLastRoute());
       failedRefreshes.current = 0;
       if (retryTimer.current) clearTimeout(retryTimer.current);
       setSyncError('');
@@ -160,6 +167,26 @@ export default function App() {
       document.removeEventListener('visibilitychange', onVisible);
     };
   }, [refresh]);
+
+  // Tell the user when this page is older than the published app (an old tab kept alive by a phone)
+  useEffect(() => {
+    let lastCheck = 0;
+    const check = async () => {
+      lastCheck = Date.now();
+      const latest = await fetchLatestVersion();
+      if (latest && latest !== APP_VERSION) setNewerVersion(latest);
+    };
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && Date.now() - lastCheck > VERSION_CHECK_MIN_GAP_MS) check();
+    };
+    check();
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
+  }, []);
 
   // ---------------------------------------------------------------
   // Writes: update the screen at once, save to the sheet, undo and tell the user if it fails.
@@ -228,6 +255,7 @@ export default function App() {
           setPermits(serverList);
           setLastSyncedAt(new Date());
           failedRefreshes.current = 0;
+          setRoute(getLastRoute());
           setSyncError('');
           setSyncState('ok');
         } else if (!serverList) {
@@ -360,10 +388,25 @@ export default function App() {
       />
 
       <main className="flex-1 max-w-6xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-5 space-y-4">
+        {newerVersion && (
+          <div role="alert" className="flex flex-wrap items-center gap-2 px-3.5 py-2.5 rounded-xl border border-blue-200 bg-blue-50 text-blue-900 text-xs">
+            <RefreshCw className="w-4 h-4 shrink-0" />
+            <span className="flex-1 min-w-48">มีเวอร์ชันใหม่ของระบบ หน้านี้ยังเป็นเวอร์ชันเก่า (อาจช้าหรือขาดฟีเจอร์ใหม่) กดโหลดใหม่เพื่ออัปเดต</span>
+            <button
+              type="button"
+              onClick={() => reloadWithNewVersion(newerVersion)}
+              className="px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold cursor-pointer"
+            >
+              โหลดเวอร์ชันใหม่
+            </button>
+          </div>
+        )}
+
         <SyncStatusBar
           state={syncState}
           lastSyncedAt={lastSyncedAt}
           lastDurationMs={lastDurationMs}
+          route={route}
           errorMessage={syncError}
           onRefresh={() => refresh(true)}
         />
@@ -386,6 +429,7 @@ export default function App() {
           <p className="text-slate-400 mt-1">
             สรุปยอดรายวัน · แถบเลือกวันที่ 1-31 · บันทึกขอจอดชั้น B1 และ B2 · ส่งออก PDF / Excel
           </p>
+          <p className="text-slate-300 mt-1 font-mono text-[10px]">เวอร์ชัน {APP_VERSION}</p>
         </div>
       </footer>
 
