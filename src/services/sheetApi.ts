@@ -93,26 +93,21 @@ const post = (payload: Record<string, unknown>) =>
     body: JSON.stringify(payload),
   });
 
-export async function fetchPermits(): Promise<ParkingPermit[]> {
-  const url = requireUrl();
-  const sep = url.includes('?') ? '&' : '?';
-  const json = await request(`${url}${sep}action=list&t=${Date.now()}`);
+function toPermits(json: ApiResponse): ParkingPermit[] {
   const data = json.data;
   if (!Array.isArray(data)) throw new ApiError('server_error', 'โครงสร้างข้อมูลจากชีตไม่ถูกต้อง');
   return data.map(normalizePermit);
 }
 
+export async function fetchPermits(): Promise<ParkingPermit[]> {
+  const url = requireUrl();
+  const sep = url.includes('?') ? '&' : '?';
+  return toPermits(await request(`${url}${sep}action=list`));
+}
+
 export async function login(password: string): Promise<{ token: string; mustChange: boolean }> {
   const json = await post({ action: 'login', password });
   return { token: String(json.token), mustChange: json.mustChange === true };
-}
-
-export async function logout(token: string): Promise<void> {
-  try {
-    await post({ action: 'logout', token });
-  } catch {
-    // the token expires on its own; nothing to do if this fails
-  }
 }
 
 export async function changePassword(
@@ -124,11 +119,12 @@ export async function changePassword(
   return String(json.token);
 }
 
-export const addPermit = (token: string, permit: ParkingPermit) =>
-  post({ action: 'add', token, permit }).then(() => undefined);
+// Every write answers with the complete, up-to-date list, so no second request is needed.
+export const addPermit = async (token: string, permit: ParkingPermit) =>
+  toPermits(await post({ action: 'add', token, permit }));
 
-export const updatePermit = (token: string, permit: ParkingPermit) =>
-  post({ action: 'update', token, permit }).then(() => undefined);
+export const updatePermit = async (token: string, permit: ParkingPermit) =>
+  toPermits(await post({ action: 'update', token, permit }));
 
-export const deletePermit = (token: string, id: string) =>
-  post({ action: 'delete', token, id }).then(() => undefined);
+export const deletePermit = async (token: string, id: string) =>
+  toPermits(await post({ action: 'delete', token, id }));

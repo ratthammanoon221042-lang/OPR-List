@@ -10,14 +10,15 @@
  *  4. เลือกประเภท "เว็บแอป" (Web app)
  *       - ดำเนินการในฐานะ (Execute as): ตัวฉันเอง (Me)
  *       - ผู้มีสิทธิ์เข้าถึง (Who has access): ทุกคน (Anyone)
- *  5. คัดลอก "URL เว็บแอป" ไปวางในหน้า "ตั้งค่า" ของแอป
- *  6. ล็อกอินครั้งแรกด้วยรหัสเริ่มต้น แล้วแอปจะบังคับให้เปลี่ยนรหัสทันที
+ *  5. กด "อนุญาต" ในหน้าขอสิทธิ์ แล้วคัดลอก "URL เว็บแอป" (ลงท้าย /exec)
  *
- * ถ้าแก้โค้ดภายหลัง ต้องสร้าง "การทำให้ใช้งานได้รายการใหม่" (หรือแก้ deployment เดิมเป็นเวอร์ชันใหม่) ทุกครั้ง
+ * ถ้าแก้โค้ดภายหลัง: ทำให้ใช้งานได้ > จัดการการทำให้ใช้งานได้ > ไอคอนดินสอ > เวอร์ชัน "เวอร์ชันใหม่"
+ * (วิธีนี้ URL จะไม่เปลี่ยน ส่วนการสร้าง "รายการใหม่" จะได้ URL ใหม่ทุกครั้ง)
  *
  * ความปลอดภัย
- *  - การอ่านรายการ (doGet) เปิดให้ทุกคนที่มี URL อ่านได้ เพื่อให้ รปภ. ดูได้โดยไม่ต้องล็อกอิน
+ *  - การอ่านรายการ (doGet) เปิดให้ทุกคนที่มี URL เพื่อให้ รปภ. ดูได้โดยไม่ต้องล็อกอิน
  *  - การเพิ่ม / แก้ไข / ลบ / เปลี่ยนรหัสผ่าน ต้องมี token ที่ได้จากการล็อกอินเท่านั้น
+ *  - token เป็นลายเซ็น HMAC มีวันหมดอายุ ไม่ต้องเก็บไว้ที่ไหน จึงไม่หลุดเองและไม่ช้า
  *  - รหัสผ่านเก็บเป็น hash (SHA-256 + salt) ใน Script Properties ไม่เก็บเป็นข้อความ
  *  - ล็อกอินผิดเกิน 5 ครั้งจะถูกล็อกชั่วคราว 5 นาที
  *  - ถ้าลืมรหัสผ่าน: เปิดตัวแก้ไข Apps Script แล้วเลือกรันฟังก์ชัน resetPassword()
@@ -27,10 +28,11 @@ var SHEET_NAME = 'รายการขอจอดรถ';
 var TIMEZONE = 'Asia/Bangkok';
 var DEFAULT_PASSWORD = '1234'; // ใช้ได้ก่อนมีการตั้งรหัสใหม่เท่านั้น
 var MIN_PASSWORD_LENGTH = 6;
-var TOKEN_TTL_SECONDS = 6 * 60 * 60; // CacheService เก็บได้สูงสุด 6 ชั่วโมง
+var TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
 var MAX_FAILED_LOGINS = 5;
 var LOCKOUT_SECONDS = 5 * 60;
-var HASH_ROUNDS = 1000;
+var LIST_CACHE_TTL_SECONDS = 120; // แก้ชีตด้วยมือโดยตรง จะเห็นในแอปภายใน 2 นาที
+var CACHE_CHUNK_CHARS = 30000; // CacheService เก็บได้ 100KB ต่อค่า (ภาษาไทย 3 ไบต์/ตัวอักษร)
 
 var HEADERS = [
   'รหัสอ้างอิง',
@@ -46,6 +48,8 @@ var HEADERS = [
   'วันที่บันทึกคำขอ'
 ];
 
+var WRITE_ACTIONS = { add: true, update: true, delete: true, import: true };
+
 // ---------------------------------------------------------------
 // Entry points
 // ---------------------------------------------------------------
@@ -54,7 +58,12 @@ function doGet(e) {
   try {
     var action = (e && e.parameter && e.parameter.action) || 'list';
     if (action === 'list') {
-      return json_({ status: 'success', data: readAllPermits_(getSheet_()) });
+      var json = getCachedListJson_();
+      if (json === null) {
+        json = JSON.stringify(readAllPermits_(getSheet_()));
+        putCachedListJson_(json);
+      }
+      return text_('{"status":"success","data":' + json + '}');
     }
     if (action === 'ping') {
       return json_({ status: 'success', message: 'เชื่อมต่อสำเร็จ' });
@@ -66,20 +75,14 @@ function doGet(e) {
 }
 
 function doPost(e) {
-  var lock = LockService.getScriptLock();
-  var locked = false;
+  var lock = null;
   try {
     var body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     var action = body.action;
 
-    // action ที่ไม่ต้องมี token
     if (action === 'ping') {
       return json_({ status: 'success', message: 'เชื่อมต่อสำเร็จ' });
     }
-
-    lock.waitLock(20000);
-    locked = true;
-
     if (action === 'login') {
       return handleLogin_(body);
     }
@@ -89,32 +92,26 @@ function doPost(e) {
       return fail_('unauthorized', 'เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่');
     }
 
-    if (action === 'logout') {
-      CacheService.getScriptCache().remove('tok:' + body.token);
-      return json_({ status: 'success' });
-    }
     if (action === 'changePassword') {
       return handleChangePassword_(body);
     }
+    if (!WRITE_ACTIONS[action]) {
+      return fail_('bad_request', 'ไม่รู้จัก action: ' + action);
+    }
+
+    // เขียนทีละคำขอ กันข้อมูลชนกันเมื่อหลายเครื่องบันทึกพร้อมกัน
+    lock = LockService.getScriptLock();
+    lock.waitLock(20000);
 
     var sheet = getSheet_();
-    if (action === 'add') {
-      return handleAdd_(sheet, body.permit);
-    }
-    if (action === 'update') {
-      return handleUpdate_(sheet, body.permit);
-    }
-    if (action === 'delete') {
-      return handleDelete_(sheet, body.id);
-    }
-    if (action === 'import') {
-      return handleImport_(sheet, body.permits);
-    }
-    return fail_('bad_request', 'ไม่รู้จัก action: ' + action);
+    if (action === 'add') return handleAdd_(sheet, body.permit);
+    if (action === 'update') return handleUpdate_(sheet, body.permit);
+    if (action === 'delete') return handleDelete_(sheet, body.id);
+    return handleImport_(sheet, body.permits);
   } catch (err) {
     return fail_('server_error', String(err));
   } finally {
-    if (locked) lock.releaseLock();
+    if (lock) lock.releaseLock();
   }
 }
 
@@ -129,18 +126,13 @@ function handleLogin_(body) {
     return fail_('locked', 'ใส่รหัสผิดหลายครั้งเกินไป กรุณารอ 5 นาทีแล้วลองใหม่');
   }
 
-  var password = String(body.password || '');
-  if (!verifyPassword_(password)) {
+  if (!verifyPassword_(String(body.password || ''))) {
     cache.put('login_failed', String(failed + 1), LOCKOUT_SECONDS);
     return fail_('invalid_password', 'รหัสผ่านไม่ถูกต้อง');
   }
 
   cache.remove('login_failed');
-  return json_({
-    status: 'success',
-    token: issueToken_(),
-    mustChange: !hasCustomPassword_()
-  });
+  return json_({ status: 'success', token: issueToken_(), mustChange: !hasCustomPassword_() });
 }
 
 function handleChangePassword_(body) {
@@ -159,8 +151,8 @@ function handleChangePassword_(body) {
 
   var props = PropertiesService.getScriptProperties();
   var salt = Utilities.getUuid();
-  props.setProperty('PW_SALT', salt);
-  props.setProperty('PW_HASH', hashPassword_(newPassword, salt));
+  props.setProperty('PW_SALT2', salt);
+  props.setProperty('PW_HASH2', hashPassword_(newPassword, salt));
   // เพิ่มเลขเวอร์ชัน ทำให้ token เดิมทุกเครื่องใช้ไม่ได้อีก
   props.setProperty('PW_VERSION', String(Number(props.getProperty('PW_VERSION') || 0) + 1));
 
@@ -168,28 +160,23 @@ function handleChangePassword_(body) {
 }
 
 function hasCustomPassword_() {
-  return !!PropertiesService.getScriptProperties().getProperty('PW_HASH');
+  return !!PropertiesService.getScriptProperties().getProperty('PW_HASH2');
 }
 
 function verifyPassword_(password) {
   var props = PropertiesService.getScriptProperties();
-  var storedHash = props.getProperty('PW_HASH');
+  var storedHash = props.getProperty('PW_HASH2');
   if (!storedHash) {
     return password === DEFAULT_PASSWORD;
   }
-  return hashPassword_(password, props.getProperty('PW_SALT') || '') === storedHash;
+  return hashPassword_(password, props.getProperty('PW_SALT2') || '') === storedHash;
 }
 
 function hashPassword_(password, salt) {
-  var h = sha256Hex_(salt + ':' + password);
-  for (var i = 0; i < HASH_ROUNDS; i++) {
-    h = sha256Hex_(h + ':' + salt + ':' + password);
-  }
-  return h;
+  return bytesToHex_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, salt + ':' + password, Utilities.Charset.UTF_8));
 }
 
-function sha256Hex_(text) {
-  var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, text, Utilities.Charset.UTF_8);
+function bytesToHex_(bytes) {
   var hex = '';
   for (var i = 0; i < bytes.length; i++) {
     var b = bytes[i] < 0 ? bytes[i] + 256 : bytes[i];
@@ -198,16 +185,33 @@ function sha256Hex_(text) {
   return hex;
 }
 
+/** token = <หมดอายุ(ms)>.<เวอร์ชันรหัสผ่าน>.<ลายเซ็น HMAC> ตรวจได้เองโดยไม่ต้องเก็บ state */
 function issueToken_() {
-  var token = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
-  CacheService.getScriptCache().put('tok:' + token, currentPasswordVersion_(), TOKEN_TTL_SECONDS);
-  return token;
+  var body = (Date.now() + TOKEN_TTL_MS) + '.' + currentPasswordVersion_();
+  return body + '.' + sign_(body);
 }
 
 function isValidToken_(token) {
   if (!token || typeof token !== 'string') return false;
-  var stored = CacheService.getScriptCache().get('tok:' + token);
-  return stored !== null && stored === currentPasswordVersion_();
+  var parts = token.split('.');
+  if (parts.length !== 3) return false;
+  if (sign_(parts[0] + '.' + parts[1]) !== parts[2]) return false;
+  if (Number(parts[0]) < Date.now()) return false;
+  return parts[1] === currentPasswordVersion_();
+}
+
+function sign_(body) {
+  return bytesToHex_(Utilities.computeHmacSha256Signature(body, getTokenSecret_()));
+}
+
+function getTokenSecret_() {
+  var props = PropertiesService.getScriptProperties();
+  var secret = props.getProperty('TOKEN_SECRET');
+  if (!secret) {
+    secret = Utilities.getUuid() + Utilities.getUuid();
+    props.setProperty('TOKEN_SECRET', secret);
+  }
+  return secret;
 }
 
 function currentPasswordVersion_() {
@@ -217,14 +221,14 @@ function currentPasswordVersion_() {
 /** รันเองจากตัวแก้ไข Apps Script เมื่อลืมรหัสผ่าน */
 function resetPassword() {
   var props = PropertiesService.getScriptProperties();
-  props.deleteProperty('PW_HASH');
-  props.deleteProperty('PW_SALT');
+  props.deleteProperty('PW_HASH2');
+  props.deleteProperty('PW_SALT2');
   props.setProperty('PW_VERSION', String(Number(props.getProperty('PW_VERSION') || 0) + 1));
   CacheService.getScriptCache().remove('login_failed');
 }
 
 // ---------------------------------------------------------------
-// Data handlers
+// Data handlers (ทุกตัวตอบกลับพร้อมรายการล่าสุด แอปจึงไม่ต้องโหลดซ้ำ)
 // ---------------------------------------------------------------
 
 function handleAdd_(sheet, raw) {
@@ -233,10 +237,10 @@ function handleAdd_(sheet, raw) {
 
   // เพิ่มซ้ำด้วย id เดิม (เช่น ลองส่งใหม่หลังเน็ตหลุด) ให้ถือว่าสำเร็จ ไม่เพิ่มแถวซ้ำ
   if (findRowById_(sheet, permit.value.id) > 0) {
-    return json_({ status: 'success', duplicate: true });
+    return done_(sheet, { duplicate: true });
   }
   writeRow_(sheet, sheet.getLastRow() + 1, permit.value);
-  return json_({ status: 'success' });
+  return done_(sheet, {});
 }
 
 function handleUpdate_(sheet, raw) {
@@ -246,7 +250,7 @@ function handleUpdate_(sheet, raw) {
   var row = findRowById_(sheet, permit.value.id);
   if (row < 0) return fail_('not_found', 'ไม่พบรายการที่ต้องการแก้ไข (อาจถูกลบไปแล้ว)');
   writeRow_(sheet, row, permit.value);
-  return json_({ status: 'success' });
+  return done_(sheet, {});
 }
 
 function handleDelete_(sheet, id) {
@@ -262,7 +266,7 @@ function handleDelete_(sheet, id) {
       deleted++;
     }
   }
-  return json_({ status: 'success', deleted: deleted });
+  return done_(sheet, { deleted: deleted });
 }
 
 /** นำเข้าข้อมูล: เพิ่มเฉพาะ id ที่ยังไม่มีในชีต ไม่เขียนทับของเดิม */
@@ -286,7 +290,59 @@ function handleImport_(sheet, permits) {
     existing[permit.value.id] = true;
     added++;
   });
-  return json_({ status: 'success', added: added, skipped: skipped });
+  return done_(sheet, { added: added, skipped: skipped });
+}
+
+/** จบการเขียน: อ่านรายการล่าสุด เก็บแคช แล้วส่งกลับพร้อมผลลัพธ์ */
+function done_(sheet, extra) {
+  var list = readAllPermits_(sheet);
+  var json = JSON.stringify(list);
+  clearListCache_();
+  putCachedListJson_(json);
+
+  var response = { status: 'success', data: list };
+  for (var key in extra) {
+    if (extra.hasOwnProperty(key)) response[key] = extra[key];
+  }
+  return json_(response);
+}
+
+// ---------------------------------------------------------------
+// List cache (อ่านจากชีตทั้งแผ่นช้า จึงเก็บผลไว้ชั่วคราว และล้างทุกครั้งที่มีการเขียน)
+// ---------------------------------------------------------------
+
+function getCachedListJson_() {
+  var cache = CacheService.getScriptCache();
+  var count = cache.get('list:n');
+  if (count === null) return null;
+  var parts = [];
+  for (var i = 0; i < Number(count); i++) {
+    var part = cache.get('list:' + i);
+    if (part === null) return null;
+    parts.push(part);
+  }
+  return parts.join('');
+}
+
+function putCachedListJson_(json) {
+  var items = {};
+  var count = Math.max(1, Math.ceil(json.length / CACHE_CHUNK_CHARS));
+  for (var i = 0; i < count; i++) {
+    items['list:' + i] = json.substring(i * CACHE_CHUNK_CHARS, (i + 1) * CACHE_CHUNK_CHARS);
+  }
+  items['list:n'] = String(count);
+  try {
+    CacheService.getScriptCache().putAll(items, LIST_CACHE_TTL_SECONDS);
+  } catch (err) {
+    // แคชเต็มหรือใช้ไม่ได้: ข้ามไป รอบหน้าอ่านจากชีตตามปกติ
+  }
+}
+
+function clearListCache_() {
+  var cache = CacheService.getScriptCache();
+  var count = Number(cache.get('list:n') || 0);
+  for (var i = 0; i < count; i++) cache.remove('list:' + i);
+  cache.remove('list:n');
 }
 
 // ---------------------------------------------------------------
@@ -458,8 +514,12 @@ function pad2_(n) {
 // Responses
 // ---------------------------------------------------------------
 
+function text_(str) {
+  return ContentService.createTextOutput(str).setMimeType(ContentService.MimeType.JSON);
+}
+
 function json_(obj) {
-  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+  return text_(JSON.stringify(obj));
 }
 
 function fail_(code, message) {

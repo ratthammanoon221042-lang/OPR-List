@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { createHash, randomUUID } from 'node:crypto';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { createHash, createHmac, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 /**
@@ -58,13 +58,17 @@ class FakeSheet {
 
 function createEnvironment() {
   const sheets = new Map<string, FakeSheet>();
+  const sheetReads = { count: 0 };
   const props = new Map<string, string>();
   const cache = new Map<string, string>();
 
   const env = {
     SpreadsheetApp: {
       getActiveSpreadsheet: () => ({
-        getSheetByName: (name: string) => sheets.get(name) ?? null,
+        getSheetByName: (name: string) => {
+          sheetReads.count++;
+          return sheets.get(name) ?? null;
+        },
         insertSheet: (name: string) => {
           const s = new FakeSheet();
           sheets.set(name, s);
@@ -80,6 +84,7 @@ function createEnvironment() {
       DigestAlgorithm: { SHA_256: 'SHA_256' },
       Charset: { UTF_8: 'UTF_8' },
       computeDigest: (_alg: string, text: string) => Array.from(createHash('sha256').update(text, 'utf8').digest(), (b) => (b > 127 ? b - 256 : b)),
+      computeHmacSha256Signature: (value: string, key: string) => Array.from(createHmac('sha256', key).update(value, 'utf8').digest(), (b) => (b > 127 ? b - 256 : b)),
       getUuid: () => randomUUID(),
       formatDate: (d: Date, tz: string) => d.toLocaleDateString('en-CA', { timeZone: tz }),
     },
@@ -94,6 +99,7 @@ function createEnvironment() {
       getScriptCache: () => ({
         get: (k: string) => cache.get(k) ?? null,
         put: (k: string, v: string) => void cache.set(k, v),
+        putAll: (items: Record<string, string>) => Object.entries(items).forEach(([k, v]) => cache.set(k, v)),
         remove: (k: string) => void cache.delete(k),
       }),
     },
@@ -114,7 +120,7 @@ function createEnvironment() {
     JSON.parse(api.doPost({ postData: { contents: JSON.stringify(body) } }).getContent());
   const list = () => JSON.parse(api.doGet({ parameter: { action: 'list' } }).getContent());
 
-  return { api, post, list, sheets, props, cache };
+  return { api, post, list, sheets, props, cache, sheetReads };
 }
 
 const permit = (over: Record<string, unknown> = {}) => ({
@@ -135,6 +141,10 @@ const permit = (over: Record<string, unknown> = {}) => ({
 describe('Code.gs', () => {
   let t: ReturnType<typeof createEnvironment>;
   let token: string;
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   beforeEach(() => {
     t = createEnvironment();
@@ -190,9 +200,21 @@ describe('Code.gs', () => {
       expect(t.post({ action: 'login', password: '1234' })).toMatchObject({ status: 'success', mustChange: true });
     });
 
-    it('logout invalidates the token', () => {
-      t.post({ action: 'logout', token });
-      expect(t.post({ action: 'add', token, permit: permit() }).code).toBe('unauthorized');
+    it('tokens are signed: tampered or expired tokens are refused', () => {
+      const [exp, version, sig] = token.split('.');
+      expect(t.post({ action: 'add', token: `${Number(exp) + 1}.${version}.${sig}`, permit: permit() }).code).toBe('unauthorized');
+      expect(t.post({ action: 'add', token: `${exp}.${version}.${'0'.repeat(sig.length)}`, permit: permit() }).code).toBe('unauthorized');
+      expect(t.post({ action: 'add', token: `${exp}.${version}`, permit: permit() }).code).toBe('unauthorized');
+      expect(t.post({ action: 'add', token, permit: permit() }).status).toBe('success');
+
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + 13 * 60 * 60 * 1000);
+      expect(t.post({ action: 'add', token, permit: permit({ id: 'PK-LATE' }) }).code).toBe('unauthorized');
+    });
+
+    it('does not depend on the cache for sessions (cache may be wiped at any time)', () => {
+      t.cache.clear();
+      expect(t.post({ action: 'add', token, permit: permit() }).status).toBe('success');
     });
   });
 
@@ -209,6 +231,47 @@ describe('Code.gs', () => {
         department: 'สร.',
         subDepartment: '',
       });
+    });
+
+    it('every write answers with the up-to-date list so the app needs no second request', () => {
+      const added = t.post({ action: 'add', token, permit: permit({ id: 'A' }) });
+      expect(added.data.map((p: { id: string }) => p.id)).toEqual(['A']);
+      const two = t.post({ action: 'add', token, permit: permit({ id: 'B', licensePlate: '2ขค1111' }) });
+      expect(two.data.map((p: { id: string }) => p.id)).toEqual(['A', 'B']);
+      const updated = t.post({ action: 'update', token, permit: permit({ id: 'A', parkingFloor: 'B2' }) });
+      expect(updated.data[0].parkingFloor).toBe('B2');
+      const removed = t.post({ action: 'delete', token, id: 'A' });
+      expect(removed.data.map((p: { id: string }) => p.id)).toEqual(['B']);
+      expect(t.list().data).toEqual(removed.data);
+    });
+
+    it('serves the list from cache without touching the sheet, and sees later writes', () => {
+      t.post({ action: 'add', token, permit: permit({ id: 'A' }) });
+      t.list(); // warms (already warm after the write)
+      const before = t.sheetReads.count;
+      for (let i = 0; i < 5; i++) expect(t.list().data).toHaveLength(1);
+      expect(t.sheetReads.count).toBe(before);
+
+      t.post({ action: 'add', token, permit: permit({ id: 'B', licensePlate: '2ขค1111' }) });
+      expect(t.list().data).toHaveLength(2);
+    });
+
+    it('falls back to the sheet when the cache is empty', () => {
+      t.post({ action: 'add', token, permit: permit({ id: 'A' }) });
+      t.cache.clear();
+      expect(t.list().data.map((p: { id: string }) => p.id)).toEqual(['A']);
+    });
+
+    it('caches big lists in chunks and returns them intact', () => {
+      const permits = Array.from({ length: 400 }, (_, i) =>
+        permit({ id: `PK-${i}`, licensePlate: `${1 + (i % 9)}กข${1000 + i}`, department: 'หน่วยงานทดสอบชื่อยาวพอสมควร', subDepartment: 'กลุ่มงานย่อย' })
+      );
+      expect(t.post({ action: 'import', token, permits }).added).toBe(400);
+      const chunks = Number(t.cache.get('list:n'));
+      expect(chunks).toBeGreaterThan(1);
+      const cached = t.list().data;
+      expect(cached).toHaveLength(400);
+      expect(cached[399].id).toBe('PK-399');
     });
 
     it('treats a repeated add with the same id as a no-op', () => {
@@ -268,6 +331,7 @@ describe('Code.gs', () => {
         ['L1', '1กข4590', 'กรุงเทพมหานคร', 'B2', 'Honda', 'ดำ', 'สร.', '-', new Date('2026-10-06T00:00:00+07:00'), new Date('2026-10-07T00:00:00+07:00'), ''],
         ['L2', '2ขค2222', 'นนทบุรี', 'B1', 'Mazda', 'แดง', '-', '-', '06/10/2569', '07/10/2569', '8/10/2569 14:00:00']
       );
+      t.cache.clear(); // rows typed into the sheet by hand show up once the short-lived cache expires
       const rows = t.list().data;
       expect(rows[0]).toMatchObject({ id: 'L1', parkingFloor: 'B2', startDate: '2026-10-06', endDate: '2026-10-07', department: 'สร.', subDepartment: '' });
       expect(rows[1]).toMatchObject({ id: 'L2', startDate: '2026-10-06', endDate: '2026-10-07' });

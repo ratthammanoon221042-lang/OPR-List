@@ -7,7 +7,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ParkingPermit } from './types/parking';
 import { loadCachedPermits, saveCachedPermits, getAuthToken, setAuthToken } from './utils/storage';
 import {
-  fetchPermits, addPermit, updatePermit, deletePermit, logout as logoutRequest, isApiError,
+  fetchPermits, addPermit, updatePermit, deletePermit, isApiError,
 } from './services/sheetApi';
 import { Header } from './components/Header';
 import { OvernightParkingDashboard } from './components/OvernightParkingDashboard';
@@ -82,6 +82,7 @@ export default function App() {
   const writeEpoch = useRef(0);
   const refreshSeq = useRef(0);
   const lastRefreshAt = useRef(0);
+  const writeQueue = useRef<Promise<void>>(Promise.resolve());
 
   const refresh = useCallback(async (showSpinner = false) => {
     if (pendingWrites.current > 0) return;
@@ -138,7 +139,7 @@ export default function App() {
   const runWrite = async (opts: {
     apply: (prev: ParkingPermit[]) => ParkingPermit[];
     revert: (prev: ParkingPermit[]) => ParkingPermit[];
-    call: (token: string) => Promise<void>;
+    call: (token: string) => Promise<ParkingPermit[]>;
     success: string;
     failure: string;
   }) => {
@@ -150,22 +151,36 @@ export default function App() {
     setPermits(opts.apply);
     pendingWrites.current++;
     writeEpoch.current++;
-    try {
-      await opts.call(token);
-      showToast(`${opts.success} และบันทึกลง Google Sheet แล้ว`, 'success');
-    } catch (err) {
-      setPermits(opts.revert);
-      if (isApiError(err) && err.code === 'unauthorized') {
-        setToken(null);
-        showToast('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่ (รายการนี้ยังไม่ถูกบันทึก)', 'error');
-        setIsLoginModalOpen(true);
-      } else {
-        showToast(`${opts.failure}: ${err instanceof Error ? err.message : 'ไม่ทราบสาเหตุ'}`, 'error');
+    // Writes go to the sheet one at a time, in the order the user made them
+    const run = writeQueue.current.then(async () => {
+      let serverList: ParkingPermit[] | null = null;
+      try {
+        serverList = await opts.call(token);
+        showToast(`${opts.success} และบันทึกลง Google Sheet แล้ว`, 'success');
+      } catch (err) {
+        setPermits(opts.revert);
+        if (isApiError(err) && err.code === 'unauthorized') {
+          setToken(null);
+          showToast('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่ (รายการนี้ยังไม่ถูกบันทึก)', 'error');
+          setIsLoginModalOpen(true);
+        } else {
+          showToast(`${opts.failure}: ${err instanceof Error ? err.message : 'ไม่ทราบสาเหตุ'}`, 'error');
+        }
+      } finally {
+        pendingWrites.current--;
+        if (serverList && pendingWrites.current === 0) {
+          // The sheet's own answer is the truth once nothing else is waiting to be saved
+          setPermits(serverList);
+          setLastSyncedAt(new Date());
+          setSyncError('');
+          setSyncState('ok');
+        } else if (!serverList) {
+          refresh();
+        }
       }
-    } finally {
-      pendingWrites.current--;
-      refresh();
-    }
+    });
+    writeQueue.current = run;
+    await run;
   };
 
   const handleSubmitPermit = (permit: ParkingPermit) => {
@@ -240,7 +255,6 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    if (token) logoutRequest(token);
     setToken(null);
     showToast('ออกจากระบบเรียบร้อยแล้ว', 'info');
   };
