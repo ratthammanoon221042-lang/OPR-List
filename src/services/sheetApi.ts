@@ -8,7 +8,7 @@ import { normalizePermit } from '../utils/permit';
 
 /** Web app URL of the deployed apps-script/Code.gs (the Google Sheet backend) */
 const DEFAULT_APPS_SCRIPT_URL =
-  'https://script.google.com/macros/s/AKfycbwa37UQKqxDALMTZTxjeGkG1Nz_ZWAYFIU-_Y827Kfni0vJVJNoQsf3kazg6lTkzAlRgQ/exec';
+  'https://script.google.com/macros/s/AKfycbwvZxrFsXHIp63NvyMDQi-QgmPxJ2deHpxWjpMhEQlKBiyNFiMjJrBHMWOpC0gxgINAqQ/exec';
 
 const REQUEST_TIMEOUT_MS = 25_000;
 
