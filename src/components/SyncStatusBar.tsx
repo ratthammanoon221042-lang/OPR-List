@@ -31,7 +31,7 @@ export const SyncStatusBar: React.FC<SyncStatusBarProps> = ({
   if (isError) {
     message = `ซิงค์กับ Google Sheet ไม่สำเร็จ: ${errorMessage} (กำลังแสดงข้อมูลที่เครื่องจำไว้${time ? ` ซึ่งอัปเดตล่าสุด ${time} น.` : ''})`;
   } else if (isStale) {
-    message = `Google Sheet ตอบช้าหรือไม่ตอบ กำลังใช้ข้อมูลที่เครื่องจำไว้${time ? ` (อัปเดตล่าสุด ${time} น.)` : ''} และจะลองใหม่เอง`;
+    message = `Google Sheet ตอบช้าหรือไม่ตอบ (${errorMessage}) กำลังใช้ข้อมูลที่เครื่องจำไว้${time ? ` ซึ่งอัปเดตล่าสุด ${time} น.` : ''} และกำลังลองใหม่อัตโนมัติ`;
   } else if (state === 'syncing') {
     message = 'กำลังซิงค์กับ Google Sheet...';
   } else {

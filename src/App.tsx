@@ -31,6 +31,8 @@ const AUTO_REFRESH_MS = 5 * 60_000;
 const FOCUS_REFRESH_MIN_GAP_MS = 60_000;
 // A failed background check is only reported as an error after this many failures in a row
 const ERROR_AFTER_FAILURES = 3;
+// After a failed check, try again soon (10 s, 30 s, then every minute) instead of waiting for the next 5-minute check
+const RETRY_DELAYS_MS = [10_000, 30_000, 60_000];
 
 export default function App() {
   const [permits, setPermits] = useState<ParkingPermit[]>(() => loadCachedPermits());
@@ -93,6 +95,8 @@ export default function App() {
   const refreshSeq = useRef(0);
   const lastRefreshAt = useRef(0);
   const writeQueue = useRef<Promise<void>>(Promise.resolve());
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshRef = useRef<(showSpinner?: boolean) => Promise<void>>(async () => undefined);
 
   const refresh = useCallback(async (showSpinner = false) => {
     if (pendingWrites.current > 0) return;
@@ -108,11 +112,16 @@ export default function App() {
       setLastSyncedAt(new Date());
       setLastDurationMs(Date.now() - startedAt);
       failedRefreshes.current = 0;
+      if (retryTimer.current) clearTimeout(retryTimer.current);
       setSyncError('');
       setSyncState('ok');
     } catch (err) {
       if (seq !== refreshSeq.current) return;
       failedRefreshes.current++;
+      // Keep trying in the background until the sheet answers
+      if (retryTimer.current) clearTimeout(retryTimer.current);
+      const delay = RETRY_DELAYS_MS[Math.min(failedRefreshes.current - 1, RETRY_DELAYS_MS.length - 1)];
+      retryTimer.current = setTimeout(() => refreshRef.current(false), delay);
       setSyncError(err instanceof Error ? err.message : 'ไม่ทราบสาเหตุ');
       // One failed background check is usually just a slow moment: keep calm, retry later
       setSyncState(showSpinner || failedRefreshes.current >= ERROR_AFTER_FAILURES ? 'error' : 'stale');
@@ -120,6 +129,7 @@ export default function App() {
   }, [setLastSyncedAt]);
 
   useEffect(() => {
+    refreshRef.current = refresh;
     // refresh() only sets state after the network request resolves
     // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh();
@@ -134,10 +144,16 @@ export default function App() {
       if (document.visibilityState === 'visible') refresh();
     }, AUTO_REFRESH_MS);
 
+    // The connection came back: check right away instead of waiting
+    const onOnline = () => refresh();
+
     window.addEventListener('focus', onFocus);
+    window.addEventListener('online', onOnline);
     document.addEventListener('visibilitychange', onVisible);
     return () => {
       clearInterval(timer);
+      if (retryTimer.current) clearTimeout(retryTimer.current);
+      window.removeEventListener('online', onOnline);
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisible);
     };
