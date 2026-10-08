@@ -1,11 +1,14 @@
 import React from 'react';
-import { RefreshCw, Cloud, AlertTriangle } from 'lucide-react';
+import { RefreshCw, Cloud, CloudOff, AlertTriangle } from 'lucide-react';
 
-export type SyncState = 'syncing' | 'ok' | 'error';
+/** stale = a background check failed but there is still recent data; error = repeated or manual failure */
+export type SyncState = 'syncing' | 'ok' | 'stale' | 'error';
 
 interface SyncStatusBarProps {
   state: SyncState;
   lastSyncedAt: Date | null;
+  /** How long the last successful request took, to tell a slow Google from a broken setup */
+  lastDurationMs: number | null;
   errorMessage: string;
   onRefresh: () => void;
 }
@@ -13,28 +16,46 @@ interface SyncStatusBarProps {
 export const SyncStatusBar: React.FC<SyncStatusBarProps> = ({
   state,
   lastSyncedAt,
+  lastDurationMs,
   errorMessage,
   onRefresh,
 }) => {
   const isError = state === 'error';
+  const isStale = state === 'stale';
+  const time = lastSyncedAt
+    ? lastSyncedAt.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
+    : null;
+  const speed = lastDurationMs !== null ? ` (ตอบใน ${(lastDurationMs / 1000).toFixed(1)} วินาที)` : '';
+
+  let message: string;
+  if (isError) {
+    message = `ซิงค์กับ Google Sheet ไม่สำเร็จ: ${errorMessage} (กำลังแสดงข้อมูลที่เครื่องจำไว้${time ? ` ซึ่งอัปเดตล่าสุด ${time} น.` : ''})`;
+  } else if (isStale) {
+    message = `Google Sheet ตอบช้าหรือไม่ตอบ กำลังใช้ข้อมูลที่เครื่องจำไว้${time ? ` (อัปเดตล่าสุด ${time} น.)` : ''} และจะลองใหม่เอง`;
+  } else if (state === 'syncing') {
+    message = 'กำลังซิงค์กับ Google Sheet...';
+  } else {
+    message = `เชื่อมต่อ Google Sheet แล้ว${time ? ` · อัปเดตล่าสุด ${time} น.` : ''}${speed}`;
+  }
+
   return (
     <div
       className={`flex flex-wrap items-center gap-2 px-3.5 py-2 rounded-xl border text-xs ${
-        isError ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-slate-200 bg-white text-slate-600'
+        isError
+          ? 'border-rose-200 bg-rose-50 text-rose-800'
+          : isStale
+            ? 'border-amber-200 bg-amber-50 text-amber-900'
+            : 'border-slate-200 bg-white text-slate-600'
       }`}
     >
-      {isError ? <AlertTriangle className="w-4 h-4 shrink-0" /> : <Cloud className="w-4 h-4 shrink-0 text-emerald-600" />}
-      <span className="flex-1 min-w-48">
-        {isError
-          ? `ซิงค์กับ Google Sheet ไม่สำเร็จ: ${errorMessage} (กำลังแสดงข้อมูลล่าสุดที่เครื่องนี้จำไว้)`
-          : state === 'syncing'
-            ? 'กำลังซิงค์กับ Google Sheet...'
-            : `เชื่อมต่อ Google Sheet แล้ว${
-                lastSyncedAt
-                  ? ` · อัปเดตล่าสุด ${lastSyncedAt.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.`
-                  : ''
-              }`}
-      </span>
+      {isError ? (
+        <AlertTriangle className="w-4 h-4 shrink-0" />
+      ) : isStale ? (
+        <CloudOff className="w-4 h-4 shrink-0" />
+      ) : (
+        <Cloud className="w-4 h-4 shrink-0 text-emerald-600" />
+      )}
+      <span className="flex-1 min-w-48">{message}</span>
       <button
         type="button"
         onClick={onRefresh}

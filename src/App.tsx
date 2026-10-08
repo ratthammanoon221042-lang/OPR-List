@@ -26,8 +26,11 @@ import { CheckCircle2, AlertCircle, XCircle } from 'lucide-react';
 
 type ToastType = 'success' | 'info' | 'error';
 
-const AUTO_REFRESH_MS = 60_000;
-const FOCUS_REFRESH_MIN_GAP_MS = 10_000;
+// Apps Script is slow and rate-limited, so check in the background only now and then
+const AUTO_REFRESH_MS = 5 * 60_000;
+const FOCUS_REFRESH_MIN_GAP_MS = 60_000;
+// A failed background check is only reported as an error after this many failures in a row
+const ERROR_AFTER_FAILURES = 3;
 
 export default function App() {
   const [permits, setPermits] = useState<ParkingPermit[]>(() => loadCachedPermits());
@@ -39,6 +42,8 @@ export default function App() {
 
   const [syncState, setSyncState] = useState<SyncState>('syncing');
   const [syncError, setSyncError] = useState('');
+  const [lastDurationMs, setLastDurationMs] = useState<number | null>(null);
+  const failedRefreshes = useRef(0);
   // When the sheet last confirmed this list (kept across visits, shown on reports)
   const [lastSyncedAt, setLastSyncedAtState] = useState<Date | null>(() => loadLastSynced());
   const setLastSyncedAt = useCallback((date: Date) => {
@@ -93,19 +98,24 @@ export default function App() {
     if (pendingWrites.current > 0) return;
     const seq = ++refreshSeq.current;
     const epoch = writeEpoch.current;
-    lastRefreshAt.current = Date.now();
+    const startedAt = Date.now();
+    lastRefreshAt.current = startedAt;
     if (showSpinner) setSyncState('syncing');
     try {
       const data = await fetchPermits();
       if (seq !== refreshSeq.current || pendingWrites.current > 0 || epoch !== writeEpoch.current) return;
       setPermits(data);
       setLastSyncedAt(new Date());
+      setLastDurationMs(Date.now() - startedAt);
+      failedRefreshes.current = 0;
       setSyncError('');
       setSyncState('ok');
     } catch (err) {
       if (seq !== refreshSeq.current) return;
+      failedRefreshes.current++;
       setSyncError(err instanceof Error ? err.message : 'ไม่ทราบสาเหตุ');
-      setSyncState('error');
+      // One failed background check is usually just a slow moment: keep calm, retry later
+      setSyncState(showSpinner || failedRefreshes.current >= ERROR_AFTER_FAILURES ? 'error' : 'stale');
     }
   }, [setLastSyncedAt]);
 
@@ -185,6 +195,7 @@ export default function App() {
           // The sheet's own answer is the truth once nothing else is waiting to be saved
           setPermits(serverList);
           setLastSyncedAt(new Date());
+          failedRefreshes.current = 0;
           setSyncError('');
           setSyncState('ok');
         } else if (!serverList) {
@@ -314,6 +325,7 @@ export default function App() {
         <SyncStatusBar
           state={syncState}
           lastSyncedAt={lastSyncedAt}
+          lastDurationMs={lastDurationMs}
           errorMessage={syncError}
           onRefresh={() => refresh(true)}
         />
