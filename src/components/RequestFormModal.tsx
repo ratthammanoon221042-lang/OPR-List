@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { ParkingPermit } from '../types/parking';
 import { 
   VEHICLE_BRANDS, 
@@ -8,72 +8,72 @@ import {
   NORTH_PROVINCES, 
   NORTHEAST_PROVINCES, 
   SOUTH_PROVINCES 
-} from '../utils/mockData';
+} from '../utils/constants';
 import { DropdownSelect, DropdownGroup } from './DropdownSelect';
 import { calculateNights, formatThaiDate, getTodayDateString } from '../utils/dateUtils';
-import { X, Car, Calendar, CheckCircle2, AlertCircle, Layers, Building2, Palette } from 'lucide-react';
+import { findOverlappingPermits, generatePermitId } from '../utils/permit';
+import { X, Car, Calendar, CheckCircle2, AlertCircle, AlertTriangle, Layers, Building2, Palette } from 'lucide-react';
 
 interface RequestFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (permit: ParkingPermit) => void;
   defaultDate?: string;
+  /** When set the form edits this permit instead of creating a new one */
+  editingPermit?: ParkingPermit | null;
+  /** Used to warn about the same plate being requested for overlapping dates */
+  existingPermits?: ParkingPermit[];
 }
 
-export const RequestFormModal: React.FC<RequestFormModalProps> = ({
-  isOpen,
+/** Value for a dropdown that has an "อื่นๆ" (other) option with a free-text field */
+function splitOther(value: string | undefined, options: string[]): { select: string; custom: string } {
+  if (!value) return { select: '', custom: '' };
+  return options.includes(value) ? { select: value, custom: '' } : { select: 'อื่นๆ', custom: value };
+}
+
+/**
+ * The form is mounted only while open, so every opening starts from fresh state:
+ * blank for a new request, or filled from the permit being edited.
+ */
+export const RequestFormModal: React.FC<RequestFormModalProps> = ({ isOpen, ...rest }) => {
+  if (!isOpen) return null;
+  return <RequestForm key={rest.editingPermit?.id ?? 'new'} {...rest} />;
+};
+
+const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen'>> = ({
   onClose,
   onSubmit,
   defaultDate,
+  editingPermit,
+  existingPermits = [],
 }) => {
+  const isEdit = !!editingPermit;
   const initialDate = defaultDate || getTodayDateString();
 
-  // Form State - REQUIREMENT 2: รีเซ็ตเป็นค่าว่างไว้ทุกครั้ง ไม่คงข้อมูลเก่าไว้
-  const [vehicleBrand, setVehicleBrand] = useState('');
-  const [customBrand, setCustomBrand] = useState('');
-  
-  const [vehicleColor, setVehicleColor] = useState('');
-  const [customColor, setCustomColor] = useState('');
-  
-  const [department, setDepartment] = useState('');
-  const [customDepartment, setCustomDepartment] = useState('');
-  const [subDepartment, setSubDepartment] = useState('');
+  const initialBrand = splitOther(editingPermit?.vehicleBrand, VEHICLE_BRANDS);
+  const initialColor = splitOther(editingPermit?.vehicleColor, VEHICLE_COLORS);
+  const initialDept = splitOther(editingPermit?.department, DEPARTMENTS);
 
-  const [licensePlate, setLicensePlate] = useState('');
-  const [province, setProvince] = useState('');
-  const [parkingFloor, setParkingFloor] = useState<'B1' | 'B2'>('B1');
-  const [startDate, setStartDate] = useState(initialDate);
-  const [endDate, setEndDate] = useState(initialDate);
+  const [vehicleBrand, setVehicleBrand] = useState(initialBrand.select);
+  const [customBrand, setCustomBrand] = useState(initialBrand.custom);
+
+  const [vehicleColor, setVehicleColor] = useState(initialColor.select);
+  const [customColor, setCustomColor] = useState(initialColor.custom);
+
+  const [department, setDepartment] = useState(initialDept.select);
+  const [customDepartment, setCustomDepartment] = useState(initialDept.custom);
+  const [subDepartment, setSubDepartment] = useState(editingPermit?.subDepartment ?? '');
+
+  const [licensePlate, setLicensePlate] = useState(editingPermit?.licensePlate ?? '');
+  const [province, setProvince] = useState(editingPermit?.province ?? '');
+  const [parkingFloor, setParkingFloor] = useState<'B1' | 'B2'>(editingPermit?.parkingFloor ?? 'B1');
+  const [startDate, setStartDate] = useState(editingPermit?.startDate ?? initialDate);
+  const [endDate, setEndDate] = useState(editingPermit?.endDate ?? initialDate);
   const [errorMsg, setErrorMsg] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
-
-  // Function to reset all inputs to clean blank state, with dates set to today
-  const resetForm = () => {
-    const today = defaultDate || getTodayDateString();
-    setVehicleBrand('');
-    setCustomBrand('');
-    setVehicleColor('');
-    setCustomColor('');
-    setDepartment('');
-    setCustomDepartment('');
-    setSubDepartment('');
-    setLicensePlate('');
-    setProvince('');
-    setParkingFloor('B1');
-    setStartDate(today);
-    setEndDate(today);
-    setErrorMsg('');
-    setSuccessMsg('');
-  };
-
-  // Reset form to blank every time modal opens
-  useEffect(() => {
-    if (isOpen) {
-      resetForm();
-    }
-  }, [isOpen, defaultDate]);
-
-  if (!isOpen) return null;
+  // Permits that clash with the one being entered; the user must confirm to save anyway.
+  // Changing plate / province / dates withdraws the warning (see clearOverlaps).
+  const [overlaps, setOverlaps] = useState<ParkingPermit[]>([]);
+  const clearOverlaps = () => setOverlaps([]);
 
   const nights = calculateNights(startDate, endDate);
 
@@ -97,10 +97,7 @@ export const RequestFormModal: React.FC<RequestFormModalProps> = ({
     },
   ];
 
-  const handleClose = () => {
-    resetForm();
-    onClose();
-  };
+  const handleClose = onClose;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -147,11 +144,23 @@ export const RequestFormModal: React.FC<RequestFormModalProps> = ({
       return;
     }
 
-    const uniqueId = `PK-${startDate.replace(/-/g, '')}-${Math.floor(100 + Math.random() * 900)}`;
+    const permitId = editingPermit?.id ?? generatePermitId(startDate);
+
+    // Same plate already requested for some of these nights: warn once, save on the second click
+    if (overlaps.length === 0) {
+      const clashes = findOverlappingPermits(
+        { id: permitId, licensePlate: cleanPlate, province: province.trim(), startDate, endDate },
+        existingPermits
+      );
+      if (clashes.length > 0) {
+        setOverlaps(clashes);
+        return;
+      }
+    }
 
     const newPermit: ParkingPermit = {
-      id: uniqueId,
-      createdAt: new Date().toISOString(),
+      id: permitId,
+      createdAt: editingPermit?.createdAt ?? new Date().toISOString(),
       licensePlate: cleanPlate,
       province: province.trim(),
       vehicleBrand: finalBrand,
@@ -164,11 +173,7 @@ export const RequestFormModal: React.FC<RequestFormModalProps> = ({
     };
 
     onSubmit(newPermit);
-    setSuccessMsg('บันทึกคำขออนุญาตจอดรถค้างคืนเรียบร้อยแล้ว');
-    setTimeout(() => {
-      resetForm();
-      onClose();
-    }, 800);
+    onClose();
   };
 
   return (
@@ -182,7 +187,9 @@ export const RequestFormModal: React.FC<RequestFormModalProps> = ({
               <Car className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h3 className="text-base sm:text-lg font-bold">เพิ่มรายการขออนุญาตจอดค้างคืน</h3>
+              <h3 className="text-base sm:text-lg font-bold">
+                {isEdit ? 'แก้ไขรายการขออนุญาตจอดค้างคืน' : 'เพิ่มรายการขออนุญาตจอดค้างคืน'}
+              </h3>
               <p className="text-xs text-slate-300">
                 กรอกข้อมูลยานพาหนะ หน่วยงาน และช่วงวันที่ขอจอด
               </p>
@@ -206,10 +213,21 @@ export const RequestFormModal: React.FC<RequestFormModalProps> = ({
             </div>
           )}
 
-          {successMsg && (
-            <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
-              <span>{successMsg}</span>
+          {overlaps.length > 0 && (
+            <div className="p-3 bg-amber-50 border border-amber-300 text-amber-900 text-xs rounded-xl space-y-1.5">
+              <div className="flex items-center gap-2 font-bold">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
+                <span>ทะเบียนนี้ขออนุญาตไว้แล้วในช่วงวันที่ซ้อนกัน</span>
+              </div>
+              <ul className="list-disc pl-6 space-y-0.5">
+                {overlaps.map((o) => (
+                  <li key={o.id}>
+                    {o.licensePlate} ชั้น {o.parkingFloor} · {formatThaiDate(o.startDate, 'short')} -{' '}
+                    {formatThaiDate(o.endDate, 'short')}
+                  </li>
+                ))}
+              </ul>
+              <p>ถ้ายืนยันว่าต้องการบันทึกซ้ำ ให้กด "ยืนยันบันทึกซ้ำ" อีกครั้ง</p>
             </div>
           )}
 
@@ -327,7 +345,10 @@ export const RequestFormModal: React.FC<RequestFormModalProps> = ({
                   required
                   placeholder="เช่น 1กข4590 หรือ ดด111"
                   value={licensePlate}
-                  onChange={(e) => setLicensePlate(e.target.value.replace(/\s+/g, ''))}
+                  onChange={(e) => {
+                    setLicensePlate(e.target.value.replace(/\s+/g, ''));
+                    clearOverlaps();
+                  }}
                   className="w-full text-xs sm:text-sm font-semibold border border-slate-300 rounded-lg px-3 py-2 bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500 tracking-wider"
                 />
               </div>
@@ -338,7 +359,10 @@ export const RequestFormModal: React.FC<RequestFormModalProps> = ({
                   label="จังหวัด"
                   required
                   value={province}
-                  onChange={(val) => setProvince(val)}
+                  onChange={(val) => {
+                    setProvince(val);
+                    clearOverlaps();
+                  }}
                   options={provinceGroups}
                   searchable
                   hint="(เริ่มที่ กทม.)"
@@ -403,6 +427,7 @@ export const RequestFormModal: React.FC<RequestFormModalProps> = ({
                   value={startDate}
                   onChange={(e) => {
                     setStartDate(e.target.value);
+                    clearOverlaps();
                     if (endDate < e.target.value) {
                       setEndDate(e.target.value);
                     }
@@ -424,7 +449,10 @@ export const RequestFormModal: React.FC<RequestFormModalProps> = ({
                   required
                   min={startDate}
                   value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
+                  onChange={(e) => {
+                    setEndDate(e.target.value);
+                    clearOverlaps();
+                  }}
                   className="w-full text-xs sm:text-sm border border-slate-300 rounded-lg px-3 py-2 bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500 font-mono"
                 />
                 <span className="text-[11px] text-slate-500 mt-0.5 block">
@@ -435,7 +463,7 @@ export const RequestFormModal: React.FC<RequestFormModalProps> = ({
 
             {/* สรุปจำนวนคืนที่ขอจอด */}
             <div className="bg-blue-50/70 border border-blue-200/60 rounded-xl p-3 flex items-center justify-between text-xs">
-              <span className="text-blue-900 font-medium">รวมระยะเวลาที่ขอจอดค้างคืน:</span>
+              <span className="text-blue-900 font-medium">รวมระยะเวลาที่ขอจอดค้างคืน (นับวันสิ้นสุดด้วย):</span>
               <span className="font-bold text-blue-700 bg-white px-2.5 py-1 rounded-md border border-blue-200 shadow-2xs">
                 {nights} คืน
               </span>
@@ -453,10 +481,10 @@ export const RequestFormModal: React.FC<RequestFormModalProps> = ({
             </button>
             <button
               type="submit"
-              className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-xs sm:text-sm font-bold rounded-xl shadow-md transition-colors cursor-pointer flex items-center gap-1.5"
+              className={`px-5 py-2 ${overlaps.length > 0 ? 'bg-amber-600 hover:bg-amber-500' : 'bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700'} text-white text-xs sm:text-sm font-bold rounded-xl shadow-md transition-colors cursor-pointer flex items-center gap-1.5`}
             >
               <CheckCircle2 className="w-4 h-4" />
-              <span>บันทึกรายการ</span>
+              <span>{overlaps.length > 0 ? 'ยืนยันบันทึกซ้ำ' : isEdit ? 'บันทึกการแก้ไข' : 'บันทึกรายการ'}</span>
             </button>
           </div>
         </form>

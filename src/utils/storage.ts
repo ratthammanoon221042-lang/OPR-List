@@ -1,145 +1,68 @@
 import { ParkingPermit } from '../types/parking';
-import { INITIAL_PERMITS, DEFAULT_AUTH_CREDENTIALS, THAI_PROVINCES } from './mockData';
+import { normalizePermit } from './permit';
 
-const PERMITS_STORAGE_KEY = 'thai_overnight_parking_permits_v6';
-const AUTH_STATUS_KEY = 'thai_overnight_auth_status_v1';
-const AUTH_CREDENTIALS_KEY = 'thai_overnight_auth_creds_v1';
+// The Google Sheet is the source of truth. This local copy only lets the app show
+// the last known data instantly (or offline) while the sheet is being loaded.
+const PERMITS_CACHE_KEY = 'thai_overnight_parking_permits_cache_v7';
+const AUTH_TOKEN_KEY = 'thai_overnight_auth_token_v2';
 
-/**
- * Normalizes a permit to guarantee:
- * 1. licensePlate has NO spaces (written connected)
- * 2. province is separated
- * 3. parkingFloor is strictly 'B1' or 'B2'
- */
-export function normalizePermit(raw: any): ParkingPermit {
-  let plate = (raw.licensePlate || '').trim();
-  let prov = (raw.province || '').trim();
-
-  // If province is missing, attempt to extract it from the plate string
-  if (!prov) {
-    for (const p of THAI_PROVINCES) {
-      if (plate.endsWith(p)) {
-        prov = p;
-        plate = plate.slice(0, plate.length - p.length).trim();
-        break;
-      }
-    }
-  }
-
-  // Also check shorthand like "กรุงเทพฯ" or "กทม."
-  if (!prov) {
-    if (plate.includes('กรุงเทพฯ') || plate.includes('กทม.')) {
-      prov = 'กรุงเทพมหานคร';
-      plate = plate.replace('กรุงเทพฯ', '').replace('กทม.', '').trim();
-    }
-  }
-
-  // Remove ALL spaces from licensePlate
-  plate = plate.replace(/\s+/g, '');
-  if (!prov) {
-    prov = 'กรุงเทพมหานคร';
-  }
-
-  // Normalize floor to strictly B1 or B2
-  let rawFloor = (raw.parkingFloor || 'B1').toString();
-  let floor: 'B1' | 'B2' = 'B1';
-  if (rawFloor.includes('B2') || rawFloor.includes('ชั้น 2') || rawFloor.includes('2')) {
-    floor = 'B2';
-  } else {
-    floor = 'B1';
-  }
-
-  return {
-    id: raw.id || `PK-${Date.now()}`,
-    createdAt: raw.createdAt || new Date().toISOString(),
-    licensePlate: plate,
-    province: prov,
-    vehicleBrand: (raw.vehicleBrand || 'ไม่ระบุ').trim(),
-    vehicleColor: (raw.vehicleColor || 'ไม่ระบุ').trim(),
-    parkingFloor: floor,
-    department: raw.department ? raw.department.trim() : undefined,
-    subDepartment: raw.subDepartment ? raw.subDepartment.trim() : undefined,
-    startDate: raw.startDate || '2026-10-06',
-    endDate: raw.endDate || raw.startDate || '2026-10-06',
-    requesterName: raw.requesterName,
-    requesterPhone: raw.requesterPhone,
-  };
-}
-
-/**
- * Load permits - zero mock data, returns only real saved permits or empty array
- */
-export function loadPermits(): ParkingPermit[] {
+export function loadCachedPermits(): ParkingPermit[] {
   try {
-    const raw = localStorage.getItem(PERMITS_STORAGE_KEY);
-    if (!raw) {
-      return [];
-    }
-
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed.map(normalizePermit);
+    const raw = localStorage.getItem(PERMITS_CACHE_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.map(normalizePermit) : [];
   } catch (e) {
-    console.error('Failed to load permits from localStorage', e);
+    console.error('Failed to load cached permits', e);
     return [];
   }
 }
 
-export function savePermits(permits: ParkingPermit[]): void {
+export function saveCachedPermits(permits: ParkingPermit[]): void {
   try {
-    const normalized = permits.map(normalizePermit);
-    localStorage.setItem(PERMITS_STORAGE_KEY, JSON.stringify(normalized));
+    localStorage.setItem(PERMITS_CACHE_KEY, JSON.stringify(permits));
   } catch (e) {
-    console.error('Failed to save permits to localStorage', e);
+    console.error('Failed to cache permits', e);
   }
 }
 
-export function getAuthCredentials(): { username: string; password: string } {
+// The token lives in sessionStorage only, so closing the tab logs the user out.
+export function getAuthToken(): string | null {
   try {
-    const raw = localStorage.getItem(AUTH_CREDENTIALS_KEY);
-    if (!raw) return DEFAULT_AUTH_CREDENTIALS;
-    const parsed = JSON.parse(raw);
-    return parsed?.password ? parsed : DEFAULT_AUTH_CREDENTIALS;
+    return sessionStorage.getItem(AUTH_TOKEN_KEY);
   } catch {
-    return DEFAULT_AUTH_CREDENTIALS;
+    return null;
   }
 }
 
-export function resetPasswordToDefault(): void {
+export function setAuthToken(token: string | null): void {
   try {
-    localStorage.setItem(AUTH_CREDENTIALS_KEY, JSON.stringify(DEFAULT_AUTH_CREDENTIALS));
+    if (token) sessionStorage.setItem(AUTH_TOKEN_KEY, token);
+    else sessionStorage.removeItem(AUTH_TOKEN_KEY);
   } catch (e) {
-    console.error('Failed to reset auth credentials', e);
+    console.error('Failed to store auth token', e);
   }
 }
 
-export function saveAuthCredentials(creds: { username: string; password: string }): void {
-  try {
-    localStorage.setItem(AUTH_CREDENTIALS_KEY, JSON.stringify(creds));
-  } catch (e) {
-    console.error('Failed to save auth credentials', e);
-  }
-}
+// Records that were only ever saved on this device (before a Google Sheet was connected).
+// Kept aside so the user can upload them to the sheet instead of losing them.
+const LOCAL_ONLY_KEY = 'thai_overnight_local_only_v1';
 
-export function getIsAuthenticated(): boolean {
+export function loadLocalOnlyPermits(): ParkingPermit[] {
   try {
-    return sessionStorage.getItem(AUTH_STATUS_KEY) === 'true';
+    const raw = localStorage.getItem(LOCAL_ONLY_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.map(normalizePermit) : [];
   } catch {
-    return false;
+    return [];
   }
 }
 
-export function setAuthenticatedSession(status: boolean): void {
+export function saveLocalOnlyPermits(permits: ParkingPermit[]): void {
   try {
-    if (status) {
-      sessionStorage.setItem(AUTH_STATUS_KEY, 'true');
-    } else {
-      sessionStorage.removeItem(AUTH_STATUS_KEY);
-    }
+    if (permits.length > 0) localStorage.setItem(LOCAL_ONLY_KEY, JSON.stringify(permits));
+    else localStorage.removeItem(LOCAL_ONLY_KEY);
   } catch (e) {
-    console.error('Failed to update session auth status', e);
+    console.error('Failed to store local-only permits', e);
   }
 }

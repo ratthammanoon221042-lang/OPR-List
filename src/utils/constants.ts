@@ -1,15 +1,6 @@
-import { ParkingPermit } from '../types/parking';
-
-// Single authorized account credentials for recording vehicle requests
-export const DEFAULT_AUTH_CREDENTIALS = {
-  username: 'employer',
-  password: '1234',
-  displayName: 'ผู้ว่าจ้าง / ผู้บันทึกข้อมูล',
-};
-
 export const PARKING_FLOORS: ('B1' | 'B2')[] = ['B1', 'B2'];
 
-// REQUIREMENT 4: ยี่ห้อ ปรับเป็นดรอปดาวน์ รายการตามนี้
+// ยี่ห้อ ปรับเป็นดรอปดาวน์ รายการตามนี้
 export const VEHICLE_BRANDS = [
   'Toyota',
   'Honda',
@@ -27,7 +18,7 @@ export const VEHICLE_BRANDS = [
   'Suzuki',
   'Chevrolet',
   'BMW',
-  'Valvo',
+  'Volvo',
   'Volkswagen',
   'Mini',
   'Hyundai',
@@ -43,15 +34,14 @@ export const VEHICLE_BRANDS = [
   'Haval',
   'Jaecoo',
   'Deepal',
-  'Cgangan',
+  'Changan',
   'Chery',
   'Geely',
   'Xpeng',
-  'Aion',
   'อื่นๆ',
 ];
 
-// REQUIREMENT 5: สี ใช้เป็นดรอปดาวน์ ตามนี้
+// สี ใช้เป็นดรอปดาวน์ ตามนี้
 export const VEHICLE_COLORS = [
   'ขาว',
   'ดำ',
@@ -71,7 +61,7 @@ export const VEHICLE_COLORS = [
   'อื่นๆ',
 ];
 
-// REQUIREMENT 6: หน่วยงาน ใช้เป็นดรอปดาวน์ ตามนี้
+// หน่วยงาน ใช้เป็นดรอปดาวน์ ตามนี้
 export const DEPARTMENTS = [
   'สร.',
   'สป.ดศ.',
@@ -84,7 +74,7 @@ export const DEPARTMENTS = [
   'อื่นๆ',
 ];
 
-// REQUIREMENT 8: จังหวัดใช้เป็นดรอปดาวน์ 77 จังหวัดของไทย เรียงลำดับจากภาคกลาง เริ่มที่กรุงเทพก่อน
+// จังหวัดใช้เป็นดรอปดาวน์ 77 จังหวัดของไทย เรียงลำดับจากภาคกลาง เริ่มที่กรุงเทพก่อน
 export const CENTRAL_PROVINCES = [
   'กรุงเทพมหานคร',
   'นนทบุรี',
@@ -182,4 +172,3 @@ export const THAI_PROVINCES = [
 ];
 
 // ลบข้อมูลจำลองออกทั้งหมด ใช้ข้อมูลจริงจาก Google Sheets เป็นหลัก
-export const INITIAL_PERMITS: ParkingPermit[] = [];

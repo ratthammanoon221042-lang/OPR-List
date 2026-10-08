@@ -1,13 +1,14 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { ParkingPermit } from '../types/parking';
 import { getDaysInMonth, isPermitActiveOnDate, formatThaiDate, getThaiDayName } from '../utils/dateUtils';
 import { downloadParkingReportPdf } from '../utils/pdfGenerator';
-import { Calendar, ChevronLeft, ChevronRight, FileDown, Printer, Trash2, Loader2, Search, Building2, Car } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, FileDown, Printer, Trash2, Pencil, Loader2, Search, Building2 } from 'lucide-react';
 
 interface OvernightParkingDashboardProps {
   permits: ParkingPermit[];
   onDeletePermit?: (permit: ParkingPermit) => void;
-  onRequestLogin?: () => void;
+  onEditPermit?: (permit: ParkingPermit) => void;
+  onPrint?: (date: string) => void;
   isAuthenticated: boolean;
   selectedDate: string;
   onSelectDate: (date: string) => void;
@@ -16,39 +17,33 @@ interface OvernightParkingDashboardProps {
 export const OvernightParkingDashboard: React.FC<OvernightParkingDashboardProps> = ({
   permits,
   onDeletePermit,
-  onRequestLogin,
+  onEditPermit,
+  onPrint,
   isAuthenticated,
   selectedDate,
   onSelectDate,
 }) => {
-  // Current Month State (Initialized from selectedDate or current date)
-  const initialYearMonth = useMemo(() => {
-    if (selectedDate) {
-      const parts = selectedDate.split('-').map(Number);
-      if (parts[0] && parts[1]) {
-        return { year: parts[0], month: parts[1] };
-      }
-    }
+  // The month shown follows the selected date (also when it is changed from outside)
+  const parseYearMonth = (date: string) => {
+    const parts = date.split('-').map(Number);
+    if (parts[0] && parts[1]) return { year: parts[0], month: parts[1] };
     const now = new Date();
     return { year: now.getFullYear(), month: now.getMonth() + 1 };
-  }, []);
+  };
 
-  const [currentYear, setCurrentYear] = useState(initialYearMonth.year);
-  const [currentMonth, setCurrentMonth] = useState(initialYearMonth.month);
+  const [currentYear, setCurrentYear] = useState(() => parseYearMonth(selectedDate).year);
+  const [currentMonth, setCurrentMonth] = useState(() => parseYearMonth(selectedDate).month);
+  const [trackedDate, setTrackedDate] = useState(selectedDate);
   const [isExporting, setIsExporting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [floorFilter, setFloorFilter] = useState<'all' | 'B1' | 'B2'>('all');
 
-  // Keep month view aligned if selectedDate changes
-  useEffect(() => {
-    if (selectedDate) {
-      const parts = selectedDate.split('-').map(Number);
-      if (parts[0] && parts[1]) {
-        setCurrentYear(parts[0]);
-        setCurrentMonth(parts[1]);
-      }
-    }
-  }, [selectedDate]);
+  if (selectedDate !== trackedDate) {
+    setTrackedDate(selectedDate);
+    const { year, month } = parseYearMonth(selectedDate);
+    setCurrentYear(year);
+    setCurrentMonth(month);
+  }
 
   const thaiMonthNames = [
     'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
@@ -168,7 +163,7 @@ export const OvernightParkingDashboard: React.FC<OvernightParkingDashboardProps>
       await downloadParkingReportPdf(currentDayStat.permits, selectedDate);
     } catch (err) {
       console.error('PDF export error:', err);
-      window.print();
+      window.alert('สร้างไฟล์ PDF ไม่สำเร็จ ลองใช้ปุ่มพิมพ์แล้วเลือก "บันทึกเป็น PDF" แทน');
     } finally {
       setIsExporting(false);
     }
@@ -300,7 +295,7 @@ export const OvernightParkingDashboard: React.FC<OvernightParkingDashboardProps>
 
             <button
               type="button"
-              onClick={() => window.print()}
+              onClick={() => onPrint?.(selectedDate)}
               disabled={currentDayStat.count === 0}
               className="p-1.5 sm:p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
               title="พิมพ์เอกสาร"
@@ -389,7 +384,7 @@ export const OvernightParkingDashboard: React.FC<OvernightParkingDashboardProps>
                 <th className="py-2.5 px-3 text-center">จังหวัด</th>
                 <th className="py-2.5 px-2.5 text-center">ชั้นที่จอด</th>
                 <th className="py-2.5 px-3 text-center">วันที่ขอจอด</th>
-                <th className="py-2.5 px-2 text-center w-12 text-slate-500 font-semibold">ลบ</th>
+                <th className="py-2.5 px-2 text-center w-20 text-slate-500 font-semibold">จัดการ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 bg-white">
@@ -465,22 +460,20 @@ export const OvernightParkingDashboard: React.FC<OvernightParkingDashboardProps>
                         {formatThaiDate(permit.startDate, 'short')} - {formatThaiDate(permit.endDate, 'short')}
                       </td>
 
-                      {/* จัดการ (ลบ) */}
-                      <td className="py-2.5 px-2 text-center">
+                      {/* จัดการ (แก้ไข / ลบ) */}
+                      <td className="py-2.5 px-2 text-center whitespace-nowrap">
                         <button
                           type="button"
-                          onClick={() => {
-                            if (isAuthenticated) {
-                              onDeletePermit?.(permit);
-                            } else {
-                              onRequestLogin?.();
-                            }
-                          }}
-                          className={`p-1.5 rounded-lg cursor-pointer transition-colors inline-flex items-center justify-center ${
-                            isAuthenticated
-                              ? 'text-rose-500 hover:text-rose-700 hover:bg-rose-50'
-                              : 'text-slate-400 hover:text-rose-600 hover:bg-slate-100'
-                          }`}
+                          onClick={() => onEditPermit?.(permit)}
+                          className="p-1.5 rounded-lg cursor-pointer transition-colors inline-flex items-center justify-center text-blue-500 hover:text-blue-700 hover:bg-blue-50"
+                          title={isAuthenticated ? 'แก้ไขรายการ' : 'เข้าสู่ระบบเพื่อแก้ไขข้อมูล'}
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onDeletePermit?.(permit)}
+                          className="p-1.5 rounded-lg cursor-pointer transition-colors inline-flex items-center justify-center text-rose-500 hover:text-rose-700 hover:bg-rose-50"
                           title={isAuthenticated ? 'ลบรายการขออนุญาต' : 'เข้าสู่ระบบเพื่อลบข้อมูล'}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -574,26 +567,27 @@ export const OvernightParkingDashboard: React.FC<OvernightParkingDashboardProps>
                         </span>
                       </div>
 
-                      {/* Delete action */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (isAuthenticated) {
-                            onDeletePermit?.(permit);
-                          } else {
-                            onRequestLogin?.();
-                          }
-                        }}
-                        className={`p-1 px-1.5 rounded-md transition-colors cursor-pointer inline-flex items-center gap-1 ${
-                          isAuthenticated
-                            ? 'text-rose-500 hover:text-rose-700 hover:bg-rose-50'
-                            : 'text-slate-400 hover:text-rose-600 hover:bg-slate-100'
-                        }`}
-                        title={isAuthenticated ? 'ลบรายการขออนุญาต' : 'เข้าสู่ระบบเพื่อลบข้อมูล'}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        <span className="text-[11px] font-medium">ลบ</span>
-                      </button>
+                      {/* Edit / delete actions */}
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => onEditPermit?.(permit)}
+                          className="p-1 px-1.5 rounded-md transition-colors cursor-pointer inline-flex items-center gap-1 text-blue-500 hover:text-blue-700 hover:bg-blue-50"
+                          title={isAuthenticated ? 'แก้ไขรายการ' : 'เข้าสู่ระบบเพื่อแก้ไขข้อมูล'}
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                          <span className="text-[11px] font-medium">แก้ไข</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onDeletePermit?.(permit)}
+                          className="p-1 px-1.5 rounded-md transition-colors cursor-pointer inline-flex items-center gap-1 text-rose-500 hover:text-rose-700 hover:bg-rose-50"
+                          title={isAuthenticated ? 'ลบรายการขออนุญาต' : 'เข้าสู่ระบบเพื่อลบข้อมูล'}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span className="text-[11px] font-medium">ลบ</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>

@@ -1,32 +1,31 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { ParkingPermit } from '../types/parking';
 import { isPermitActiveOnDate, formatThaiDate, getTodayDateString } from '../utils/dateUtils';
 import { downloadParkingReportPdf } from '../utils/pdfGenerator';
-import { X, Printer, Download, Calendar, FileDown, Loader2 } from 'lucide-react';
+import { downloadCsv, downloadExcel } from '../utils/exportData';
+import { X, Printer, Download, FileSpreadsheet, Calendar, FileDown, Loader2 } from 'lucide-react';
 
 interface SecurityChecklistModalProps {
   isOpen: boolean;
   onClose: () => void;
   permits: ParkingPermit[];
   initialDate?: string;
+  onPrint: (date: string) => void;
 }
 
-export const SecurityChecklistModal: React.FC<SecurityChecklistModalProps> = ({
-  isOpen,
+export const SecurityChecklistModal: React.FC<SecurityChecklistModalProps> = ({ isOpen, ...rest }) => {
+  if (!isOpen) return null;
+  return <SecurityChecklist {...rest} />;
+};
+
+const SecurityChecklist: React.FC<Omit<SecurityChecklistModalProps, 'isOpen'>> = ({
   onClose,
   permits,
   initialDate,
+  onPrint,
 }) => {
   const [targetDate, setTargetDate] = useState(() => initialDate || getTodayDateString());
   const [isExporting, setIsExporting] = useState(false);
-
-  useEffect(() => {
-    if (isOpen) {
-      setTargetDate(initialDate || getTodayDateString());
-    }
-  }, [isOpen, initialDate]);
-
-  if (!isOpen) return null;
 
   // Filter permits for targetDate
   const activePermits = permits.filter(p => isPermitActiveOnDate(p, targetDate));
@@ -39,49 +38,33 @@ export const SecurityChecklistModal: React.FC<SecurityChecklistModalProps> = ({
     try {
       await downloadParkingReportPdf(activePermits, targetDate);
     } catch (err) {
-      console.error('Failed to generate PDF, falling back to print dialog', err);
-      window.print();
+      console.error('Failed to generate PDF', err);
+      window.alert('สร้างไฟล์ PDF ไม่สำเร็จ ลองใช้ปุ่มพิมพ์แล้วเลือก "บันทึกเป็น PDF" แทน');
     } finally {
       setIsExporting(false);
     }
   };
 
-  const handlePrint = () => {
-    window.print();
-  };
+  const handlePrint = () => onPrint(targetDate);
 
-  const handleExportCSV = () => {
-    // Order: ลำดับ | ยี่ห้อ | สี | หน่วยงาน | ทะเบียน | จังหวัด | ชั้นที่จอด | วันที่ขอจอด
-    const headers = ['ลำดับ', 'ยี่ห้อ', 'สี', 'หน่วยงาน', 'หน่วยงานย่อย', 'หมายเลขทะเบียน', 'จังหวัด', 'ชั้นที่จอด', 'วันที่ขอจอด'];
-    const rows = activePermits.map((p, index) => [
-      index + 1,
-      `"${p.vehicleBrand}"`,
-      `"${p.vehicleColor}"`,
-      `"${p.department || '-'}"`,
-      `"${p.subDepartment || '-'}"`,
-      `"${p.licensePlate.replace(/\s+/g, '')}"`,
-      `"${p.province || 'กรุงเทพมหานคร'}"`,
-      `"${p.parkingFloor}"`,
-      `"${formatThaiDate(p.startDate, 'short')} - ${formatThaiDate(p.endDate, 'short')}"`
-    ]);
+  const handleExportCSV = () => downloadCsv(activePermits, targetDate);
 
-    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `รายการทะเบียนรถ_${targetDate}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
+  const handleExportExcel = async () => {
+    try {
+      await downloadExcel(activePermits, targetDate);
+    } catch (err) {
+      console.error('Failed to export Excel', err);
+      window.alert('ส่งออกไฟล์ Excel ไม่สำเร็จ ลองใช้ CSV แทน');
+    }
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 print:p-0 print:bg-white print:static print:inset-auto">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4">
       {/* Modal Dialog Container with max-h-[92vh] to guarantee top is NEVER cut off */}
-      <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden print:border-none print:shadow-none print:rounded-none print:max-h-none">
+      <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
         
         {/* Top Controls Toolbar - ALWAYS VISIBLE AT TOP */}
-        <div className="bg-slate-900 text-white px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 shrink-0 print:hidden">
+        <div className="bg-slate-900 text-white px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-2">
             <Calendar className="w-5 h-5 text-blue-400 shrink-0" />
             <div>
@@ -135,6 +118,17 @@ export const SecurityChecklistModal: React.FC<SecurityChecklistModalProps> = ({
               <span>CSV</span>
             </button>
 
+            {/* Excel Export */}
+            <button
+              type="button"
+              onClick={handleExportExcel}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium rounded-lg transition-colors cursor-pointer"
+              title="ส่งออก Excel (.xlsx)"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Excel</span>
+            </button>
+
             <button
               type="button"
               onClick={onClose}
@@ -146,7 +140,7 @@ export const SecurityChecklistModal: React.FC<SecurityChecklistModalProps> = ({
         </div>
 
         {/* Date Selector Bar - ALWAYS VISIBLE */}
-        <div className="bg-slate-50 border-b border-slate-200 px-5 py-2.5 flex items-center justify-between text-xs text-slate-600 shrink-0 print:hidden">
+        <div className="bg-slate-50 border-b border-slate-200 px-5 py-2.5 flex items-center justify-between text-xs text-slate-600 shrink-0">
           <div className="flex items-center gap-2">
             <label className="font-semibold text-slate-700">เลือกวันที่สำหรับรายงาน:</label>
             <input
@@ -167,7 +161,7 @@ export const SecurityChecklistModal: React.FC<SecurityChecklistModalProps> = ({
         </div>
 
         {/* SCROLLABLE SHEET PREVIEW */}
-        <div id="security-print-sheet" className="p-6 sm:p-8 bg-white text-slate-900 font-sans overflow-y-auto flex-1 print:p-0 print:overflow-visible">
+        <div className="p-6 sm:p-8 bg-white text-slate-900 font-sans overflow-y-auto flex-1">
           
           {/* Header: Title & Date */}
           <div className="text-center pb-5 mb-5 border-b-2 border-slate-900">
@@ -239,7 +233,7 @@ export const SecurityChecklistModal: React.FC<SecurityChecklistModalProps> = ({
         </div>
 
         {/* Modal Footer - ALWAYS VISIBLE AT BOTTOM */}
-        <div className="bg-slate-100 px-6 py-3 border-t border-slate-200 flex justify-between items-center text-xs shrink-0 print:hidden">
+        <div className="bg-slate-100 px-6 py-3 border-t border-slate-200 flex justify-between items-center text-xs shrink-0">
           <span className="text-slate-500 hidden sm:inline">
             กด 'ดาวน์โหลดไฟล์ PDF' เพื่อบันทึกเป็นไฟล์ .pdf ลงเครื่องทันที
           </span>

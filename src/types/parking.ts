@@ -9,9 +9,7 @@ export interface ParkingPermit {
   department?: string; // หน่วยงาน (ถ้ามี)
   subDepartment?: string; // หน่วยงานย่อย (ไม่บังคับ)
   startDate: string; // YYYY-MM-DD
-  endDate: string; // YYYY-MM-DD
-  requesterName?: string;
-  requesterPhone?: string;
+  endDate: string; // YYYY-MM-DD (นับวันสิ้นสุดด้วย)
 }
 
 export interface DayParkingSummary {

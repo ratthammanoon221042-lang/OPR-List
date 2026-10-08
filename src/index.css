@@ -7,18 +7,35 @@
 }
 
 @media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+
   body {
     background: #ffffff !important;
     color: #000000 !important;
   }
-  
-  header, footer, nav {
+
+  /* Print only the report: hide the app, toasts and every open modal */
+  #app-root {
+    background: #ffffff !important;
+    min-height: 0 !important;
+  }
+
+  #app-root > :not(#print-report) {
     display: none !important;
   }
 
-  @page {
-    size: A4 portrait;
-    margin: 10mm;
+  #print-report {
+    display: block !important;
+  }
+
+  #print-report thead {
+    display: table-header-group;
+  }
+
+  #print-report tr {
+    break-inside: avoid;
   }
 }
-

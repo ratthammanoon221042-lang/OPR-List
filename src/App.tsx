@@ -3,279 +3,372 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ParkingPermit } from './types/parking';
-import { 
-  loadPermits, savePermits, 
-  getIsAuthenticated, setAuthenticatedSession, resetPasswordToDefault 
+import {
+  loadCachedPermits, saveCachedPermits, getAuthToken, setAuthToken,
+  saveLocalOnlyPermits,
 } from './utils/storage';
-import { 
-  getStoredSpreadsheetId, 
-  getStoredAppsScriptUrl,
-  getAccessToken, 
-  appendPermitToGoogleSheet,
-  deletePermitFromGoogleSheet,
-  syncAllPermitsToGoogleSheet,
-  fetchPermitsFromGoogleSheet,
-  initGoogleAuth
-} from './services/googleSheets';
+import {
+  getAppsScriptUrl, setAppsScriptUrl, fetchPermits, addPermit, updatePermit, deletePermit,
+  logout as logoutRequest, isApiError,
+} from './services/sheetApi';
 import { Header } from './components/Header';
 import { OvernightParkingDashboard } from './components/OvernightParkingDashboard';
 import { RequestFormModal } from './components/RequestFormModal';
 import { SecurityChecklistModal } from './components/SecurityChecklistModal';
 import { EmployerLoginModal } from './components/EmployerLoginModal';
+import { SettingsModal } from './components/SettingsModal';
+import { SyncStatusBar, SyncState } from './components/SyncStatusBar';
+import { PrintReport } from './components/PrintReport';
 import { ConfirmModal } from './components/ConfirmModal';
 import { formatThaiDate, getTodayDateString } from './utils/dateUtils';
-import { CheckCircle2, AlertCircle } from 'lucide-react';
+import { CheckCircle2, AlertCircle, XCircle } from 'lucide-react';
+
+type ToastType = 'success' | 'info' | 'error';
+
+const AUTO_REFRESH_MS = 60_000;
+const FOCUS_REFRESH_MIN_GAP_MS = 10_000;
 
 export default function App() {
-  const [permits, setPermits] = useState<ParkingPermit[]>(() => loadPermits());
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => getIsAuthenticated());
+  const [permits, setPermits] = useState<ParkingPermit[]>(() => loadCachedPermits());
   const [selectedDate, setSelectedDate] = useState<string>(() => getTodayDateString());
 
-  // Modal states: Only creation form, password verification popup, printable PDF dialog, and confirm modals
+  // Connection to the Google Sheet (via Apps Script) and the logged-in session
+  const [connectedUrl, setConnectedUrl] = useState<string>(() => getAppsScriptUrl());
+  const [token, setTokenState] = useState<string | null>(() => getAuthToken());
+  const connected = !!connectedUrl;
+  // Without a sheet the app is a single-device notebook and needs no password
+  const canEdit = !connected || !!token;
+
+  const [syncState, setSyncState] = useState<SyncState>('syncing');
+  const [syncError, setSyncError] = useState('');
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
+
+  // Modals
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
+  const [editingPermit, setEditingPermit] = useState<ParkingPermit | null>(null);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
-
-  // In-app Confirmation Modals (Replaces window.confirm for iframe stability)
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [permitToDelete, setPermitToDelete] = useState<ParkingPermit | null>(null);
-  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
-  const [pendingAction, setPendingAction] = useState<'create' | 'delete' | null>(null);
-  const [pendingDeletePermit, setPendingDeletePermit] = useState<ParkingPermit | null>(null);
 
-  // Toast notification
-  const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' } | null>(null);
+  // What to do once the user has logged in (open the form, ask to delete, ...)
+  const afterLoginRef = useRef<(() => void) | null>(null);
 
-  const showToast = (text: string, type: 'success' | 'info' = 'success') => {
-    setToastMessage({ text, type });
-    setTimeout(() => setToastMessage(null), 3000);
-  };
+  // Print request: a counter so printing the same date twice still triggers
+  const [printRequest, setPrintRequest] = useState<{ date: string; n: number } | null>(null);
 
-  // Persist permits whenever updated
+  // Toast
+  const [toast, setToast] = useState<{ text: string; type: ToastType } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showToast = useCallback((text: string, type: ToastType = 'success') => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ text, type });
+    toastTimer.current = setTimeout(() => setToast(null), type === 'error' ? 6000 : 3000);
+  }, []);
+  useEffect(() => () => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+  }, []);
+
+  const setToken = useCallback((next: string | null) => {
+    setAuthToken(next);
+    setTokenState(next);
+  }, []);
+
+  // Keep a local copy so the last known list shows instantly / offline
   useEffect(() => {
-    savePermits(permits);
+    saveCachedPermits(permits);
   }, [permits]);
 
-  // Load from Google Sheet as primary database on mount & on window focus
+  // ---------------------------------------------------------------
+  // Syncing with the sheet. A refresh never overwrites the list while a write is
+  // in flight (or started during the fetch), and only the newest refresh is applied.
+  // ---------------------------------------------------------------
+  const pendingWrites = useRef(0);
+  const writeEpoch = useRef(0);
+  const refreshSeq = useRef(0);
+  const lastRefreshAt = useRef(0);
+
+  const refresh = useCallback(async (showSpinner = false) => {
+    if (!getAppsScriptUrl() || pendingWrites.current > 0) return;
+    const seq = ++refreshSeq.current;
+    const epoch = writeEpoch.current;
+    lastRefreshAt.current = Date.now();
+    if (showSpinner) setSyncState('syncing');
+    try {
+      const data = await fetchPermits();
+      if (seq !== refreshSeq.current || pendingWrites.current > 0 || epoch !== writeEpoch.current) return;
+      setPermits(data);
+      setLastSyncedAt(new Date());
+      setSyncError('');
+      setSyncState('ok');
+    } catch (err) {
+      if (seq !== refreshSeq.current) return;
+      setSyncError(err instanceof Error ? err.message : 'ไม่ทราบสาเหตุ');
+      setSyncState('error');
+    }
+  }, []);
+
   useEffect(() => {
-    const syncFromGoogleSheet = async () => {
-      const sheetId = getStoredSpreadsheetId();
-      const appsScriptUrl = getStoredAppsScriptUrl();
-      if (!sheetId && !appsScriptUrl) return;
+    if (!connectedUrl) return;
+    // refresh() only sets state after the network request resolves
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    refresh();
 
-      try {
-        const token = await getAccessToken();
-        const sheetPermits = await fetchPermitsFromGoogleSheet(token, sheetId);
-        if (Array.isArray(sheetPermits)) {
-          setPermits(sheetPermits);
-          savePermits(sheetPermits);
-        }
-      } catch (err) {
-        console.warn('Sync from Google Sheet:', err);
-      }
+    const onFocus = () => {
+      if (Date.now() - lastRefreshAt.current > FOCUS_REFRESH_MIN_GAP_MS) refresh();
     };
-
-    syncFromGoogleSheet();
-
-    const handleFocus = () => {
-      syncFromGoogleSheet();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') onFocus();
     };
-    window.addEventListener('focus', handleFocus);
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') refresh();
+    }, AUTO_REFRESH_MS);
+
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
-      window.removeEventListener('focus', handleFocus);
+      clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisible);
     };
-  }, []);
+  }, [connectedUrl, refresh]);
 
-  // Reset password to 1234 on mount as requested & init Google Auth
-  useEffect(() => {
-    resetPasswordToDefault();
-    initGoogleAuth();
-  }, []);
-
-  // Click handler for Login tab
-  const handleOpenLogin = () => {
-    setPendingAction('create');
+  // ---------------------------------------------------------------
+  // Writes: update the screen at once, save to the sheet, undo and tell the user if it fails.
+  // ---------------------------------------------------------------
+  const requireLogin = (action: () => void) => {
+    afterLoginRef.current = action;
     setIsLoginModalOpen(true);
   };
 
-  // Click handler for "+ เพิ่มรายการขออนุญาต"
-  const handleOpenAddRequest = () => {
-    if (!isAuthenticated) {
-      setPendingAction('create');
-      setIsLoginModalOpen(true);
-    } else {
-      setIsRequestModalOpen(true);
+  const runWrite = async (opts: {
+    apply: (prev: ParkingPermit[]) => ParkingPermit[];
+    revert: (prev: ParkingPermit[]) => ParkingPermit[];
+    call: (token: string) => Promise<void>;
+    success: string;
+    failure: string;
+  }) => {
+    if (!connected) {
+      setPermits(opts.apply);
+      showToast(`${opts.success} (เก็บในเครื่องนี้)`, 'success');
+      return;
+    }
+    if (!token) {
+      showToast('กรุณาเข้าสู่ระบบก่อนบันทึกข้อมูล', 'error');
+      return;
+    }
+
+    setPermits(opts.apply);
+    pendingWrites.current++;
+    writeEpoch.current++;
+    try {
+      await opts.call(token);
+      showToast(`${opts.success} และบันทึกลง Google Sheet แล้ว`, 'success');
+    } catch (err) {
+      setPermits(opts.revert);
+      if (isApiError(err) && err.code === 'unauthorized') {
+        setToken(null);
+        showToast('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่ (รายการนี้ยังไม่ถูกบันทึก)', 'error');
+        setIsLoginModalOpen(true);
+      } else {
+        showToast(`${opts.failure}: ${err instanceof Error ? err.message : 'ไม่ทราบสาเหตุ'}`, 'error');
+      }
+    } finally {
+      pendingWrites.current--;
+      refresh();
     }
   };
 
-  const handleLoginSuccess = () => {
-    setIsAuthenticated(true);
-    setAuthenticatedSession(true);
+  const handleSubmitPermit = (permit: ParkingPermit) => {
+    const editing = editingPermit;
+    if (editing) {
+      runWrite({
+        apply: (prev) => prev.map((p) => (p.id === permit.id ? permit : p)),
+        revert: (prev) => prev.map((p) => (p.id === permit.id ? editing : p)),
+        call: (t) => updatePermit(t, permit),
+        success: `แก้ไขรายการทะเบียน ${permit.licensePlate} เรียบร้อย`,
+        failure: 'แก้ไขรายการไม่สำเร็จ',
+      });
+    } else {
+      runWrite({
+        apply: (prev) => [...prev, permit],
+        revert: (prev) => prev.filter((p) => p.id !== permit.id),
+        call: (t) => addPermit(t, permit),
+        success: `บันทึกคำขอทะเบียน ${permit.licensePlate} เรียบร้อย`,
+        failure: 'บันทึกรายการไม่สำเร็จ',
+      });
+    }
+  };
+
+  const handleConfirmDelete = () => {
+    const target = permitToDelete;
+    if (!target) return;
+    setPermitToDelete(null);
+    runWrite({
+      apply: (prev) => prev.filter((p) => p.id !== target.id),
+      revert: (prev) => (prev.some((p) => p.id === target.id) ? prev : [...prev, target]),
+      call: (t) => deletePermit(t, target.id),
+      success: `ลบรายการรถทะเบียน ${target.licensePlate} เรียบร้อย`,
+      failure: 'ลบรายการไม่สำเร็จ',
+    });
+  };
+
+  // ---------------------------------------------------------------
+  // UI handlers
+  // ---------------------------------------------------------------
+  const openNewRequestForm = () => {
+    setEditingPermit(null);
+    setIsRequestModalOpen(true);
+  };
+
+  const handleOpenAddRequest = () => {
+    if (canEdit) openNewRequestForm();
+    else requireLogin(openNewRequestForm);
+  };
+
+  const handleEditPermit = (permit: ParkingPermit) => {
+    const open = () => {
+      setEditingPermit(permit);
+      setIsRequestModalOpen(true);
+    };
+    if (canEdit) open();
+    else requireLogin(open);
+  };
+
+  const handleDeletePermitClick = (permit: ParkingPermit) => {
+    const ask = () => setPermitToDelete(permit);
+    if (canEdit) ask();
+    else requireLogin(ask);
+  };
+
+  const handleLoginSuccess = (newToken: string) => {
+    setToken(newToken);
     setIsLoginModalOpen(false);
     showToast('เข้าสู่ระบบสำเร็จ สามารถบันทึกและจัดการข้อมูลได้ทันที', 'success');
-
-    if (pendingAction === 'delete' && pendingDeletePermit) {
-      setPermitToDelete(pendingDeletePermit);
-      setIsDeleteConfirmOpen(true);
-      setPendingAction(null);
-      setPendingDeletePermit(null);
-    } else {
-      setIsRequestModalOpen(true);
-      setPendingAction(null);
-    }
+    const next = afterLoginRef.current;
+    afterLoginRef.current = null;
+    next?.();
   };
 
   const handleLogout = () => {
-    setIsAuthenticated(false);
-    setAuthenticatedSession(false);
+    if (token) logoutRequest(token);
+    setToken(null);
     showToast('ออกจากระบบเรียบร้อยแล้ว', 'info');
   };
 
-  const handleCreatePermit = async (newPermit: ParkingPermit) => {
-    const nextPermits = [newPermit, ...permits];
-    setPermits(nextPermits);
-
-    // Auto sync immediately to Google Sheet if connected
-    const sheetId = getStoredSpreadsheetId();
-    if (sheetId) {
-      const token = await getAccessToken();
-      try {
-        await appendPermitToGoogleSheet(token, sheetId, newPermit);
-        showToast(`บันทึกคำขอทะเบียน ${newPermit.licensePlate} และอัปเดตลง Google Sheet เรียบร้อยแล้ว`, 'success');
-      } catch (err) {
-        console.warn('Auto append failed, performing full sync:', err);
-        try {
-          await syncAllPermitsToGoogleSheet(token, sheetId, nextPermits);
-          showToast(`บันทึกคำขอทะเบียน ${newPermit.licensePlate} และซิงค์ Google Sheet เรียบร้อยแล้ว`, 'success');
-        } catch {
-          showToast(`บันทึกคำขอทะเบียน ${newPermit.licensePlate} เรียบร้อยแล้ว`, 'success');
-        }
-      }
-    } else {
-      showToast(`บันทึกคำขอทะเบียน ${newPermit.licensePlate} เรียบร้อยแล้ว`, 'success');
+  const handleSaveUrl = (url: string) => {
+    // Records that exist only on this device are set aside so they can be uploaded to the sheet
+    if (!connected && permits.length > 0) {
+      saveLocalOnlyPermits(permits);
+      showToast(`พบข้อมูลในเครื่อง ${permits.length} รายการ นำขึ้นชีตได้ที่เมนูตั้งค่า`, 'info');
     }
+    setAppsScriptUrl(url);
+    setToken(null);
+    setConnectedUrl(url);
+    setSyncState('syncing');
   };
 
-  // Delete permit trigger
-  const handleDeletePermitClick = (permit: ParkingPermit) => {
-    if (!isAuthenticated) {
-      setPendingAction('delete');
-      setPendingDeletePermit(permit);
-      setIsLoginModalOpen(true);
-      return;
-    }
-    setPermitToDelete(permit);
-    setIsDeleteConfirmOpen(true);
+  const handleDisconnect = () => {
+    setAppsScriptUrl(null);
+    setConnectedUrl('');
+    setToken(null);
   };
 
-  // Confirmed delete execution: ดำเนินการลบและซิงค์ชีตทันที
-  const handleConfirmDelete = async () => {
-    if (!permitToDelete) return;
-    const targetPermit = permitToDelete;
-    const plate = targetPermit.licensePlate;
-    const updated = permits.filter(p => p.id !== targetPermit.id);
-    setPermits(updated);
-    setPermitToDelete(null);
+  // Printing: render the report first, then open the print dialog
+  const requestPrint = (date: string) => setPrintRequest((prev) => ({ date, n: (prev?.n ?? 0) + 1 }));
+  useEffect(() => {
+    if (!printRequest) return;
+    const timer = setTimeout(() => window.print(), 100);
+    return () => clearTimeout(timer);
+  }, [printRequest]);
 
-    // Sync deletion with Google Sheet immediately if connected
-    const sheetId = getStoredSpreadsheetId();
-    if (sheetId) {
-      const token = await getAccessToken();
-      try {
-        const deleted = await deletePermitFromGoogleSheet(
-          token, 
-          sheetId, 
-          targetPermit.id, 
-          targetPermit.licensePlate,
-          updated
-        );
-        if (deleted) {
-          showToast(`ลบรายการรถทะเบียน ${plate} และอัปเดต Google Sheet ทันที`, 'info');
-        } else {
-          await syncAllPermitsToGoogleSheet(token, sheetId, updated);
-          showToast(`ลบรายการรถทะเบียน ${plate} และอัปเดต Google Sheet ทันที`, 'info');
-        }
-      } catch (err) {
-        console.error('Failed to sync deletion to Google Sheet:', err);
-        try {
-          await syncAllPermitsToGoogleSheet(token, sheetId, updated);
-          showToast(`ลบรายการรถทะเบียน ${plate} และอัปเดต Google Sheet ทันที`, 'info');
-        } catch {
-          showToast(`ลบรายการรถทะเบียน ${plate} เรียบร้อยแล้ว`, 'info');
-        }
-      }
-    } else {
-      showToast(`ลบรายการรถทะเบียน ${plate} เรียบร้อยแล้ว`, 'info');
-    }
-  };
+  const displayedSyncState: SyncState = connected ? syncState : 'local';
 
   return (
-    <div className="min-h-screen bg-slate-100/80 flex flex-col font-sans text-slate-800">
-      {/* Header: ชื่อ "รายการขออนุญาตจอดค้างคืน" (ไม่มีคำว่าระบบ) พร้อมแท็บเข้าสู่ระบบ / เพิ่มรายการ */}
+    <div id="app-root" className="min-h-screen bg-slate-100/80 flex flex-col font-sans text-slate-800">
       <Header
-        isAuthenticated={isAuthenticated}
-        onOpenLogin={handleOpenLogin}
+        requiresLogin={connected}
+        isAuthenticated={canEdit}
+        onOpenLogin={() => requireLogin(openNewRequestForm)}
         onOpenNewRequest={handleOpenAddRequest}
         onLogout={handleLogout}
         onOpenPrintModal={() => setIsPrintModalOpen(true)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
-      {/* Main Container - Clean Layout without Google Sheet UI banner */}
       <main className="flex-1 max-w-6xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-5 space-y-4">
-        {/* Overnight Parking Dashboard */}
+        <SyncStatusBar
+          state={displayedSyncState}
+          lastSyncedAt={lastSyncedAt}
+          errorMessage={syncError}
+          onRefresh={() => refresh(true)}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+        />
+
         <OvernightParkingDashboard
           permits={permits}
           selectedDate={selectedDate}
           onSelectDate={setSelectedDate}
           onDeletePermit={handleDeletePermitClick}
-          onRequestLogin={handleOpenLogin}
-          isAuthenticated={isAuthenticated}
+          onEditPermit={handleEditPermit}
+          onPrint={requestPrint}
+          isAuthenticated={canEdit}
         />
       </main>
 
-      {/* Footer */}
       <footer className="mt-12 bg-white border-t border-slate-200 py-6 text-center text-xs text-slate-500">
         <div className="max-w-6xl mx-auto px-4">
-          <p className="font-semibold text-slate-700">
-            รายการขออนุญาตจอดค้างคืน
-          </p>
+          <p className="font-semibold text-slate-700">รายการขออนุญาตจอดค้างคืน</p>
           <p className="text-slate-400 mt-1">
-            สรุปยอดรายวัน · แถบเลือกวันที่ 1-31 · บันทึกขอจอดชั้น B1 และ B2 · ส่งออก PDF
+            สรุปยอดรายวัน · แถบเลือกวันที่ 1-31 · บันทึกขอจอดชั้น B1 และ B2 · ส่งออก PDF / Excel
           </p>
         </div>
       </footer>
 
-      {/* Request Form Modal (เปิดเมื่อกด "+ เพิ่มรายการขออนุญาต") */}
       <RequestFormModal
         isOpen={isRequestModalOpen}
-        onClose={() => setIsRequestModalOpen(false)}
-        onSubmit={handleCreatePermit}
+        onClose={() => {
+          setIsRequestModalOpen(false);
+          setEditingPermit(null);
+        }}
+        onSubmit={handleSubmitPermit}
         defaultDate={selectedDate}
+        editingPermit={editingPermit}
+        existingPermits={permits}
       />
 
-      {/* Password Verification Popup Modal (กรอกเฉพาะรหัสผ่านที่ตั้งไว้) */}
       <EmployerLoginModal
         isOpen={isLoginModalOpen}
         onClose={() => {
           setIsLoginModalOpen(false);
-          setPendingAction(null);
-          setPendingDeletePermit(null);
+          afterLoginRef.current = null;
         }}
         onSuccess={handleLoginSuccess}
       />
 
-      {/* PDF Export Modal */}
       <SecurityChecklistModal
         isOpen={isPrintModalOpen}
         onClose={() => setIsPrintModalOpen(false)}
         permits={permits}
         initialDate={selectedDate}
+        onPrint={requestPrint}
       />
 
-      {/* Delete Confirmation Modal (In-app modal, replaces window.confirm) */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        token={token}
+        onSaveUrl={handleSaveUrl}
+        onDisconnect={handleDisconnect}
+        onRequestLogin={() => requireLogin(() => undefined)}
+        onTokenChanged={setToken}
+        onImported={refresh}
+      />
+
       <ConfirmModal
-        isOpen={isDeleteConfirmOpen && !!permitToDelete}
+        isOpen={!!permitToDelete}
         title="ยืนยันการลบรายการขออนุญาต"
         message="คุณต้องการลบข้อมูลการขออนุญาตจอดรถค้างคืนรายการนี้ใช่หรือไม่? ข้อมูลนี้จะถูกนำออกจากระบบทันที"
         itemDetails={permitToDelete ? [
@@ -288,23 +381,23 @@ export default function App() {
         cancelText="ยกเลิก"
         confirmVariant="danger"
         onConfirm={handleConfirmDelete}
-        onClose={() => {
-          setIsDeleteConfirmOpen(false);
-          setPermitToDelete(null);
-        }}
+        onClose={() => setPermitToDelete(null)}
       />
 
-      {/* Floating Toast Notice */}
-      {toastMessage && (
-        <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2 px-4 py-3 bg-slate-900 text-white text-xs font-medium rounded-xl shadow-xl animate-in slide-in-from-bottom-5 duration-200">
-          {toastMessage.type === 'success' ? (
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-          ) : (
-            <AlertCircle className="w-4 h-4 text-blue-400 shrink-0" />
-          )}
-          <span>{toastMessage.text}</span>
+      {toast && (
+        <div
+          role="status"
+          className="fixed bottom-5 right-5 left-5 sm:left-auto z-[60] flex items-center gap-2 px-4 py-3 bg-slate-900 text-white text-xs font-medium rounded-xl shadow-xl"
+        >
+          {toast.type === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />}
+          {toast.type === 'info' && <AlertCircle className="w-4 h-4 text-blue-400 shrink-0" />}
+          {toast.type === 'error' && <XCircle className="w-4 h-4 text-rose-400 shrink-0" />}
+          <span>{toast.text}</span>
         </div>
       )}
+
+      {/* Direct child of #app-root: the only element visible when printing */}
+      <PrintReport permits={permits} date={printRequest?.date ?? selectedDate} />
     </div>
   );
 }

@@ -34,8 +34,8 @@ export function getTodayDateString(): string {
  */
 export function formatThaiDate(dateStr: string, format: 'short' | 'long' = 'short'): string {
   if (!dateStr) return '-';
+  if (!isIsoDate(dateStr)) return dateStr;
   const parts = dateStr.split('-');
-  if (parts.length < 3) return dateStr;
   const year = parseInt(parts[0], 10) + 543;
   const monthIdx = parseInt(parts[1], 10) - 1;
   const day = parseInt(parts[2], 10);
@@ -57,25 +57,74 @@ export function getThaiDayName(dateStr: string, short: boolean = false): string 
 }
 
 /**
- * Check if a permit covers a specific overnight date
+ * Check if a permit covers a specific overnight date.
+ * The start date and the end date are both counted (e.g. 6-8 Oct = 6, 7 and 8).
  */
-export function isPermitActiveOnDate(permit: ParkingPermit, targetDate: string): boolean {
-  if (permit.startDate === permit.endDate) {
-    return permit.startDate === targetDate;
-  }
-  return targetDate >= permit.startDate && targetDate < permit.endDate;
+export function isPermitActiveOnDate(
+  permit: Pick<ParkingPermit, 'startDate' | 'endDate'>,
+  targetDate: string
+): boolean {
+  return targetDate >= permit.startDate && targetDate <= permit.endDate;
+}
+
+function toUtcDay(dateStr: string): number {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return Date.UTC(y, m - 1, d);
 }
 
 /**
- * Calculate number of overnight nights
+ * Number of overnight nights, counting both the start and the end date
  */
 export function calculateNights(startDate: string, endDate: string): number {
-  if (!startDate || !endDate) return 0;
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  const diffTime = end.getTime() - start.getTime();
-  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-  return Math.max(diffDays, 1);
+  if (!isIsoDate(startDate) || !isIsoDate(endDate)) return 0;
+  const diffDays = Math.round((toUtcDay(endDate) - toUtcDay(startDate)) / 86_400_000);
+  return diffDays < 0 ? 0 : diffDays + 1;
+}
+
+/**
+ * True for a real calendar date written as YYYY-MM-DD
+ */
+export function isIsoDate(value: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return false;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const date = new Date(Date.UTC(y, mo - 1, d));
+  return date.getUTCFullYear() === y && date.getUTCMonth() === mo - 1 && date.getUTCDate() === d;
+}
+
+/**
+ * Best effort conversion of loose date text to YYYY-MM-DD.
+ * Accepts ISO strings (with or without time), dd/mm/yyyy and Buddhist-era years.
+ * Returns '' when the text is not a date.
+ */
+export function parseFlexibleDate(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const s = value.trim();
+
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (iso) {
+    const year = Number(iso[1]) > 2400 ? Number(iso[1]) - 543 : Number(iso[1]);
+    const out = `${year}-${iso[2]}-${iso[3]}`;
+    return isIsoDate(out) ? out : '';
+  }
+
+  const dmy = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(s);
+  if (dmy) {
+    const year = Number(dmy[3]) > 2400 ? Number(dmy[3]) - 543 : Number(dmy[3]);
+    const out = `${year}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+    return isIsoDate(out) ? out : '';
+  }
+  return '';
+}
+
+/**
+ * Two permits overlap when they share at least one night
+ */
+export function dateRangesOverlap(
+  a: Pick<ParkingPermit, 'startDate' | 'endDate'>,
+  b: Pick<ParkingPermit, 'startDate' | 'endDate'>
+): boolean {
+  return a.startDate <= b.endDate && b.startDate <= a.endDate;
 }
 
 /**
@@ -103,7 +152,7 @@ export function getDailySummaries(permits: ParkingPermit[], dates: string[]): Da
     const activePermits = permits.filter(p => isPermitActiveOnDate(p, date));
     const b1Count = activePermits.filter(p => p.parkingFloor === 'B1').length;
     const b2Count = activePermits.filter(p => p.parkingFloor === 'B2').length;
-    const [year, month, day] = date.split('-').map(Number);
+    const [, month, day] = date.split('-').map(Number);
     const dayName = getThaiDayName(date, false);
     const formattedDate = `${day} ${THAI_MONTHS_SHORT[month - 1]}`;
 

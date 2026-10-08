@@ -1,258 +1,272 @@
 import { ParkingPermit } from '../types/parking';
 import { formatThaiDate } from './dateUtils';
-import { jsPDF } from 'jspdf';
 
 /**
- * High-reliability client-side PDF generator for Overnight Parking reports.
- * Uses native HTML5 Canvas 2D rendering to guarantee:
- * - 100% correct Thai script and vowel rendering
- * - No dependency on html2canvas CSS parsing or CORS issues
- * - Clean, crisp A4 PDF output with columns ordered:
- *   ลำดับ | ยี่ห้อ | สี | หน่วยงาน | ทะเบียน | จังหวัด | ชั้นที่จอด | วันที่ขอจอด
+ * Client-side PDF generator for the overnight parking report.
+ *
+ * Each page is drawn on an HTML5 canvas so the browser does the Thai text shaping
+ * (jsPDF cannot position Thai vowels / tone marks correctly), then the pages are
+ * placed into an A4 PDF. The report flows over as many pages as needed and the
+ * table header is repeated on every page.
  */
+
+const PAGE_W = 1240; // A4 at ~150 DPI
+const PAGE_H = 1754;
+const SCALE = 2; // draw at 2x so text stays crisp when zoomed or printed
+const MARGIN_X = 60;
+const FOOTER_Y = PAGE_H - 50;
+const TABLE_BOTTOM = PAGE_H - 90;
+const HEADER_H = 44;
+const ROW_H = 46;
+const FIRST_PAGE_TABLE_Y = 245;
+const NEXT_PAGE_TABLE_Y = 130;
+
+const FONT = '"Prompt", "Sarabun", "TH Sarabun New", -apple-system, sans-serif';
+const COL_WIDTHS = [55, 175, 110, 180, 175, 150, 95, 180]; // = 1120
+const COL_HEADERS = ['ลำดับ', 'ยี่ห้อ', 'สี', 'หน่วยงาน', 'ทะเบียน', 'จังหวัด', 'ชั้นที่จอด', 'วันที่ขอจอด'];
+const TABLE_W = COL_WIDTHS.reduce((a, b) => a + b, 0);
+
+/** How many table rows fit on a page: page 1 has the big title block, later pages a small one */
+export function rowsPerPage(isFirstPage: boolean): number {
+  const tableY = isFirstPage ? FIRST_PAGE_TABLE_Y : NEXT_PAGE_TABLE_Y;
+  return Math.floor((TABLE_BOTTOM - tableY - HEADER_H) / ROW_H);
+}
+
+/** Splits rows into pages, always returning at least one (empty) page */
+export function paginate<T>(items: T[]): T[][] {
+  const pages: T[][] = [];
+  let index = 0;
+  do {
+    const size = rowsPerPage(pages.length === 0);
+    pages.push(items.slice(index, index + size));
+    index += size;
+  } while (index < items.length);
+  return pages;
+}
+
+/** Shortens text with an ellipsis so it fits the given pixel width */
+function fitText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
+  if (ctx.measureText(text).width <= maxWidth) return text;
+  let out = text;
+  while (out.length > 1 && ctx.measureText(out + '…').width > maxWidth) {
+    out = out.slice(0, -1);
+  }
+  return out + '…';
+}
+
+async function ensureFontsLoaded(): Promise<void> {
+  if (!('fonts' in document)) return;
+  try {
+    await Promise.all([
+      document.fonts.load(`15px ${FONT}`),
+      document.fonts.load(`500 15px ${FONT}`),
+      document.fonts.load(`bold 16px ${FONT}`),
+    ]);
+    await document.fonts.ready;
+  } catch {
+    // fall back to whatever font is available
+  }
+}
+
+function drawPage(
+  ctx: CanvasRenderingContext2D,
+  rows: ParkingPermit[],
+  firstIndex: number,
+  pageNo: number,
+  pageCount: number,
+  summary: { total: number; b1: number; b2: number; dateText: string }
+): void {
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, PAGE_W, PAGE_H);
+  ctx.textAlign = 'center';
+
+  let tableY: number;
+  if (pageNo === 1) {
+    ctx.fillStyle = '#0f172a';
+    ctx.font = `bold 32px ${FONT}`;
+    ctx.fillText('รายงานทะเบียนรถขออนุญาตจอดค้างคืน', PAGE_W / 2, 105);
+
+    ctx.fillStyle = '#334155';
+    ctx.font = `500 20px ${FONT}`;
+    ctx.fillText(`ประจำวันที่: ${summary.dateText}`, PAGE_W / 2, 150);
+
+    ctx.font = `bold 16px ${FONT}`;
+    ctx.fillStyle = '#1e40af';
+    ctx.fillText(
+      `รวมทั้งหมด ${summary.total} คัน   |   ชั้น B1: ${summary.b1} คัน   |   ชั้น B2: ${summary.b2} คัน`,
+      PAGE_W / 2,
+      190
+    );
+
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(MARGIN_X, 215);
+    ctx.lineTo(PAGE_W - MARGIN_X, 215);
+    ctx.stroke();
+    tableY = FIRST_PAGE_TABLE_Y;
+  } else {
+    ctx.fillStyle = '#334155';
+    ctx.font = `bold 20px ${FONT}`;
+    ctx.fillText(`รายงานทะเบียนรถขออนุญาตจอดค้างคืน · ${summary.dateText} (ต่อ)`, PAGE_W / 2, 80);
+    tableY = NEXT_PAGE_TABLE_Y;
+  }
+
+  // Table header
+  ctx.fillStyle = '#f1f5f9';
+  ctx.fillRect(MARGIN_X, tableY, TABLE_W, HEADER_H);
+  ctx.strokeStyle = '#475569';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(MARGIN_X, tableY, TABLE_W, HEADER_H);
+
+  let x = MARGIN_X;
+  ctx.fillStyle = '#0f172a';
+  ctx.font = `bold 16px ${FONT}`;
+  COL_HEADERS.forEach((header, i) => {
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#0f172a';
+    ctx.fillText(header, x + COL_WIDTHS[i] / 2, tableY + 28);
+    if (i > 0) {
+      ctx.beginPath();
+      ctx.moveTo(x, tableY);
+      ctx.lineTo(x, tableY + HEADER_H);
+      ctx.stroke();
+    }
+    x += COL_WIDTHS[i];
+  });
+
+  // Rows
+  if (rows.length === 0) {
+    const emptyH = 120;
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(MARGIN_X, tableY + HEADER_H, TABLE_W, emptyH);
+    ctx.fillStyle = '#64748b';
+    ctx.font = `18px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.fillText(
+      `ไม่มีรายการรถขออนุญาตจอดค้างคืนในวันที่ ${summary.dateText}`,
+      PAGE_W / 2,
+      tableY + HEADER_H + 70
+    );
+  } else {
+    rows.forEach((permit, i) => {
+      const y = tableY + HEADER_H + i * ROW_H;
+      ctx.fillStyle = i % 2 === 0 ? '#ffffff' : '#f8fafc';
+      ctx.fillRect(MARGIN_X, y, TABLE_W, ROW_H);
+      ctx.strokeStyle = '#cbd5e1';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(MARGIN_X, y, TABLE_W, ROW_H);
+
+      const textY = y + 29;
+      const cells: { text: string; align: CanvasTextAlign; font: string; color: string }[] = [
+        { text: String(firstIndex + i + 1), align: 'center', font: `15px ${FONT}`, color: '#0f172a' },
+        { text: permit.vehicleBrand, align: 'left', font: `500 15px ${FONT}`, color: '#0f172a' },
+        { text: permit.vehicleColor, align: 'left', font: `15px ${FONT}`, color: '#334155' },
+        {
+          text: permit.department
+            ? `${permit.department}${permit.subDepartment ? ` (${permit.subDepartment})` : ''}`
+            : permit.subDepartment || '-',
+          align: 'left',
+          font: `14px ${FONT}`,
+          color: '#475569',
+        },
+        {
+          text: permit.licensePlate.replace(/\s+/g, ''),
+          align: 'center',
+          font: `bold 18px ${FONT}`,
+          color: '#0f172a',
+        },
+        { text: permit.province || 'กรุงเทพมหานคร', align: 'center', font: `15px ${FONT}`, color: '#0f172a' },
+        {
+          text: permit.parkingFloor,
+          align: 'center',
+          font: `bold 17px ${FONT}`,
+          color: permit.parkingFloor === 'B1' ? '#1d4ed8' : '#4338ca',
+        },
+        {
+          text: `${formatThaiDate(permit.startDate, 'short')} - ${formatThaiDate(permit.endDate, 'short')}`,
+          align: 'center',
+          font: `13px ${FONT}`,
+          color: '#334155',
+        },
+      ];
+
+      let cx = MARGIN_X;
+      cells.forEach((cell, c) => {
+        const w = COL_WIDTHS[c];
+        if (c > 0) {
+          ctx.strokeStyle = '#cbd5e1';
+          ctx.beginPath();
+          ctx.moveTo(cx, y);
+          ctx.lineTo(cx, y + ROW_H);
+          ctx.stroke();
+        }
+        ctx.font = cell.font;
+        ctx.fillStyle = cell.color;
+        ctx.textAlign = cell.align;
+        const text = fitText(ctx, cell.text, w - 16);
+        ctx.fillText(text, cell.align === 'left' ? cx + 10 : cx + w / 2, textY);
+        cx += w;
+      });
+    });
+  }
+
+  // Footer
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = `14px ${FONT}`;
+  ctx.textAlign = 'center';
+  ctx.fillText(
+    'เอกสารสำหรับเจ้าหน้าที่ รปภ. ตรวจสอบยานพาหนะเข้าจอดค้างคืน · สร้างอัตโนมัติจากระบบ',
+    PAGE_W / 2,
+    FOOTER_Y
+  );
+  ctx.textAlign = 'right';
+  ctx.fillText(`หน้า ${pageNo}/${pageCount}`, PAGE_W - MARGIN_X, FOOTER_Y);
+}
+
 export async function downloadParkingReportPdf(
   permits: ParkingPermit[],
   targetDate: string
 ): Promise<void> {
-  const activePermits = permits;
-  const b1Count = activePermits.filter(p => p.parkingFloor === 'B1').length;
-  const b2Count = activePermits.filter(p => p.parkingFloor === 'B2').length;
-  const thaiDateStr = formatThaiDate(targetDate, 'long');
+  await ensureFontsLoaded();
+  const { jsPDF } = await import('jspdf');
 
-  // A4 resolution at ~150 DPI
-  const canvasWidth = 1240;
-  const canvasHeight = 1754;
+  const pages = paginate(permits);
+  const summary = {
+    total: permits.length,
+    b1: permits.filter((p) => p.parkingFloor === 'B1').length,
+    b2: permits.filter((p) => p.parkingFloor === 'B2').length,
+    dateText: formatThaiDate(targetDate, 'long'),
+  };
 
   const canvas = document.createElement('canvas');
-  canvas.width = canvasWidth;
-  canvas.height = canvasHeight;
+  canvas.width = PAGE_W * SCALE;
+  canvas.height = PAGE_H * SCALE;
   const ctx = canvas.getContext('2d');
-  if (!ctx) {
-    throw new Error('Canvas 2D context not available');
-  }
+  if (!ctx) throw new Error('Canvas 2D context not available');
+  ctx.scale(SCALE, SCALE);
 
-  // 1. Background
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+  const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const pdfW = 210;
+  const pdfH = (PAGE_H * pdfW) / PAGE_W;
 
-  // Helper font setter
-  const fontBase = '"Prompt", "Sarabun", "TH Sarabun New", -apple-system, sans-serif';
-
-  // 2. Header Title
-  ctx.fillStyle = '#0f172a';
-  ctx.textAlign = 'center';
-  ctx.font = `bold 32px ${fontBase}`;
-  ctx.fillText('รายงานทะเบียนรถขออนุญาตจอดค้างคืน', canvasWidth / 2, 105);
-
-  // 3. Subtitle Date
-  ctx.fillStyle = '#334155';
-  ctx.font = `500 20px ${fontBase}`;
-  ctx.fillText(`ประจำวันที่: ${thaiDateStr}`, canvasWidth / 2, 150);
-
-  // 4. Summary badge text
-  ctx.font = `bold 16px ${fontBase}`;
-  ctx.fillStyle = '#1e40af';
-  ctx.fillText(
-    `รวมทั้งหมด ${activePermits.length} คัน   |   ชั้น B1: ${b1Count} คัน   |   ชั้น B2: ${b2Count} คัน`,
-    canvasWidth / 2,
-    190
-  );
-
-  // Horizontal divider
-  ctx.strokeStyle = '#0f172a';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(60, 215);
-  ctx.lineTo(canvasWidth - 60, 215);
-  ctx.stroke();
-
-  // 5. Table geometry
-  // Order: ลำดับ | ยี่ห้อ | สี | หน่วยงาน | ทะเบียน | จังหวัด | ชั้นที่จอด | วันที่ขอจอด
-  const tableX = 60;
-  const tableY = 245;
-  const colWidths = [55, 175, 110, 180, 175, 150, 95, 180]; // Total = 1120 px
-  const colHeaders = [
-    'ลำดับ',
-    'ยี่ห้อ',
-    'สี',
-    'หน่วยงาน',
-    'ทะเบียน',
-    'จังหวัด',
-    'ชั้นที่จอด',
-    'วันที่ขอจอด',
-  ];
-  const tableWidth = colWidths.reduce((a, b) => a + b, 0);
-  const headerHeight = 44;
-  const rowHeight = 46;
-
-  // Draw Table Header
-  ctx.fillStyle = '#f1f5f9';
-  ctx.fillRect(tableX, tableY, tableWidth, headerHeight);
-  ctx.strokeStyle = '#475569';
-  ctx.lineWidth = 1.5;
-  ctx.strokeRect(tableX, tableY, tableWidth, headerHeight);
-
-  // Header column text & vertical dividers
-  let currentX = tableX;
-  ctx.fillStyle = '#0f172a';
-  ctx.font = `bold 16px ${fontBase}`;
-  ctx.textAlign = 'center';
-
-  for (let i = 0; i < colHeaders.length; i++) {
-    const w = colWidths[i];
-    const centerX = currentX + w / 2;
-    ctx.fillText(colHeaders[i], centerX, tableY + 28);
-
-    if (i > 0) {
-      ctx.beginPath();
-      ctx.moveTo(currentX, tableY);
-      ctx.lineTo(currentX, tableY + headerHeight);
-      ctx.stroke();
-    }
-    currentX += w;
-  }
-
-  // Draw Table Rows
-  if (activePermits.length === 0) {
-    const emptyRowHeight = 120;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(tableX, tableY + headerHeight, tableWidth, emptyRowHeight);
-    ctx.strokeStyle = '#cbd5e1';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(tableX, tableY + headerHeight, tableWidth, emptyRowHeight);
-
-    ctx.fillStyle = '#64748b';
-    ctx.font = `18px ${fontBase}`;
-    ctx.textAlign = 'center';
-    ctx.fillText(
-      `ไม่มีรายการรถขออนุญาตจอดค้างคืนในวันที่ ${thaiDateStr}`,
-      canvasWidth / 2,
-      tableY + headerHeight + 70
-    );
-  } else {
-    let currentY = tableY + headerHeight;
-
-    activePermits.forEach((permit, index) => {
-      // Row Background
-      ctx.fillStyle = index % 2 === 0 ? '#ffffff' : '#f8fafc';
-      ctx.fillRect(tableX, currentY, tableWidth, rowHeight);
-
-      // Row Border
-      ctx.strokeStyle = '#cbd5e1';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(tableX, currentY, tableWidth, rowHeight);
-
-      // Vertical dividers
-      let xPos = tableX;
-      for (let i = 0; i < colWidths.length; i++) {
-        const w = colWidths[i];
-        if (i > 0) {
-          ctx.beginPath();
-          ctx.moveTo(xPos, currentY);
-          ctx.lineTo(xPos, currentY + rowHeight);
-          ctx.stroke();
-        }
-
-        const textY = currentY + 29;
-        ctx.fillStyle = '#0f172a';
-
-        if (i === 0) {
-          // ลำดับ
-          ctx.textAlign = 'center';
-          ctx.font = `15px ${fontBase}`;
-          ctx.fillText((index + 1).toString(), xPos + w / 2, textY);
-        } else if (i === 1) {
-          // ยี่ห้อ
-          ctx.textAlign = 'left';
-          ctx.font = `500 15px ${fontBase}`;
-          ctx.fillStyle = '#0f172a';
-          ctx.fillText(permit.vehicleBrand, xPos + 10, textY);
-        } else if (i === 2) {
-          // สี
-          ctx.textAlign = 'left';
-          ctx.font = `15px ${fontBase}`;
-          ctx.fillStyle = '#334155';
-          ctx.fillText(permit.vehicleColor, xPos + 10, textY);
-        } else if (i === 3) {
-          // หน่วยงาน
-          ctx.textAlign = 'left';
-          ctx.font = `14px ${fontBase}`;
-          ctx.fillStyle = '#475569';
-          const fullDept = permit.department 
-            ? `${permit.department}${permit.subDepartment ? ` (${permit.subDepartment})` : ''}`
-            : (permit.subDepartment || '-');
-          // Truncate if too long for cell
-          const maxChars = 22;
-          const displayDept = fullDept.length > maxChars ? fullDept.substring(0, maxChars) + '...' : fullDept;
-          ctx.fillText(displayDept, xPos + 10, textY);
-        } else if (i === 4) {
-          // ทะเบียน (เขียนติดกัน ตัวหนา)
-          ctx.textAlign = 'center';
-          ctx.font = `bold 18px ${fontBase}`;
-          ctx.fillText(permit.licensePlate.replace(/\s+/g, ''), xPos + w / 2, textY);
-        } else if (i === 5) {
-          // จังหวัด
-          ctx.textAlign = 'center';
-          ctx.font = `15px ${fontBase}`;
-          ctx.fillText(permit.province || 'กรุงเทพมหานคร', xPos + w / 2, textY);
-        } else if (i === 6) {
-          // ชั้นที่จอด: B1 หรือ B2
-          ctx.textAlign = 'center';
-          ctx.font = `bold 17px ${fontBase}`;
-          ctx.fillStyle = permit.parkingFloor === 'B1' ? '#1d4ed8' : '#4338ca';
-          ctx.fillText(permit.parkingFloor, xPos + w / 2, textY);
-        } else if (i === 7) {
-          // วันที่ขอจอด
-          ctx.textAlign = 'center';
-          ctx.font = `13px ${fontBase}`;
-          ctx.fillStyle = '#334155';
-          const rangeStr = `${formatThaiDate(permit.startDate, 'short')} - ${formatThaiDate(permit.endDate, 'short')}`;
-          ctx.fillText(rangeStr, xPos + w / 2, textY);
-        }
-
-        xPos += w;
-      }
-
-      currentY += rowHeight;
-    });
-  }
-
-  // 6. Footer Information
-  ctx.fillStyle = '#94a3b8';
-  ctx.font = `14px ${fontBase}`;
-  ctx.textAlign = 'center';
-  ctx.fillText(
-    'เอกสารสำหรับเจ้าหน้าที่ รปภ. ตรวจสอบยานพาหนะเข้าจอดค้างคืน · สร้างอัตโนมัติจากระบบ',
-    canvasWidth / 2,
-    canvasHeight - 50
-  );
-
-  // 7. Convert Canvas to jsPDF
-  const imgData = canvas.toDataURL('image/jpeg', 0.96);
-  const pdf = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4',
+  let firstIndex = 0;
+  pages.forEach((rows, i) => {
+    drawPage(ctx, rows, firstIndex, i + 1, pages.length, summary);
+    firstIndex += rows.length;
+    if (i > 0) pdf.addPage('a4', 'portrait');
+    pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, pdfW, pdfH);
   });
 
-  const pdfWidth = 210;
-  const pdfHeight = (canvasHeight * pdfWidth) / canvasWidth;
-  pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
-
-  // 8. Download PDF with multi-tier fallback
   const filename = `รายงานทะเบียนรถขออนุญาตจอด_${targetDate}.pdf`;
-  try {
-    pdf.save(filename);
-  } catch (saveErr) {
-    console.warn('Standard pdf.save failed, falling back to Blob download', saveErr);
-    const pdfBlob = pdf.output('blob');
-    const blobUrl = URL.createObjectURL(pdfBlob);
-    const downloadLink = document.createElement('a');
-    downloadLink.href = blobUrl;
-    downloadLink.download = filename;
-    document.body.appendChild(downloadLink);
-    downloadLink.click();
-    document.body.removeChild(downloadLink);
-    setTimeout(() => URL.revokeObjectURL(blobUrl), 3000);
-  }
+  const blob = pdf.output('blob');
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(url), 3000);
 }

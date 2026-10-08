@@ -1,20 +1,53 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# รายการขออนุญาตจอดค้างคืน
 
-# Run and deploy your AI Studio app
+เว็บแอปบันทึกคำขออนุญาตจอดรถค้างคืน (ชั้น B1 / B2) พร้อมปฏิทินสรุปยอดรายวัน ให้ รปภ. ตรวจสอบรถ และส่งออกรายงานเป็น PDF / Excel / CSV
 
-This contains everything you need to run your app locally.
+- ข้อมูลเก็บใน **Google Sheet** ผ่าน Google Apps Script (`apps-script/Code.gs`) ทุกเครื่องเห็นข้อมูลตรงกัน
+- ดูรายการได้โดยไม่ต้องล็อกอิน ส่วนการ **เพิ่ม / แก้ไข / ลบ** ต้องใช้รหัสผ่าน ซึ่งตรวจฝั่งเซิร์ฟเวอร์ (Apps Script) และเก็บเป็น hash
+- นับคืนจอด **รวมวันสิ้นสุดด้วย** เช่น ขอจอด 6–8 ต.ค. = 6, 7 และ 8 (3 คืน)
 
-View your app in AI Studio: https://ai.studio/apps/80671276-4ad3-4efd-ad40-ca99e0c71e28
+## ติดตั้งและรัน
 
-## Run Locally
+```bash
+npm install
+npm run dev        # http://localhost:3000
+```
 
-**Prerequisites:**  Node.js
+คำสั่งอื่น: `npm run build`, `npm run typecheck`, `npm run lint`, `npm test`, `npm run check` (รวมสามอย่างหลัง)
 
+## เชื่อมต่อ Google Sheet (ทำครั้งเดียว)
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+1. สร้าง Google Sheet ใหม่ แล้วเปิด **ส่วนขยาย > Apps Script**
+2. วางโค้ดจาก [`apps-script/Code.gs`](apps-script/Code.gs) (หรือกด "คัดลอกโค้ดสคริปต์" ในหน้า ตั้งค่า ของแอป) แล้วบันทึก
+3. **ทำให้ใช้งานได้ > การทำให้ใช้งานได้รายการใหม่ > เว็บแอป**
+   - ดำเนินการในฐานะ: **ตัวฉันเอง**
+   - ผู้มีสิทธิ์เข้าถึง: **ทุกคน**
+4. คัดลอก URL เว็บแอป (ลงท้าย `/exec`) ไปวางที่ปุ่ม **ตั้งค่า** ในแอป แล้วกด "ทดสอบและบันทึก"
+   - หรือใส่ใน `.env.local` เป็น `VITE_APPS_SCRIPT_URL="https://script.google.com/macros/s/.../exec"` ตอน build เพื่อให้ทุกเครื่องเชื่อมต่ออัตโนมัติ
+5. กด **เข้าสู่ระบบ** ด้วยรหัสเริ่มต้น `1234` แอปจะบังคับให้ตั้งรหัสใหม่ทันที (อย่างน้อย 6 ตัวอักษร)
+
+ถ้าแก้ `Code.gs` ภายหลัง ต้อง deploy เวอร์ชันใหม่ทุกครั้ง
+
+**รหัสผ่าน**
+- เปลี่ยนได้ในหน้า ตั้งค่า รหัสใหม่มีผลทุกเครื่อง และทุกเครื่องที่ล็อกอินอยู่จะถูกให้ล็อกอินใหม่
+- ล็อกอินผิดเกิน 5 ครั้งจะถูกล็อก 5 นาที
+- ลืมรหัสผ่าน: เปิด Apps Script แล้วรันฟังก์ชัน `resetPassword()` จะกลับไปใช้ `1234`
+
+**ใช้งานโดยไม่เชื่อมชีต:** แอปยังใช้งานได้ แต่ข้อมูลอยู่ในเบราว์เซอร์เครื่องนั้นเท่านั้น (ไม่ต้องใช้รหัสผ่าน) ถ้าเชื่อมชีตภายหลัง จะนำข้อมูลในเครื่องขึ้นชีตได้จากหน้า ตั้งค่า
+
+## โครงสร้าง
+
+| ส่วน | ที่อยู่ |
+| --- | --- |
+| Backend (Apps Script + ทดสอบ) | `apps-script/` |
+| ตัวเรียก backend | `src/services/sheetApi.ts` |
+| กฎวันที่ / นับคืน | `src/utils/dateUtils.ts` |
+| ปรับข้อมูล / ตรวจทะเบียนซ้ำ | `src/utils/permit.ts` |
+| รายงาน PDF (หลายหน้า) / Excel / CSV | `src/utils/pdfGenerator.ts`, `src/utils/exportData.ts` |
+| หน้าพิมพ์ | `src/components/PrintReport.tsx` + `@media print` ใน `src/index.css` |
+
+## หมายเหตุ
+
+- PDF วาดแต่ละหน้าด้วย canvas เพื่อให้เบราว์เซอร์จัดวรรณยุกต์/สระภาษาไทยถูกต้อง จึงเป็นภาพ ไม่สามารถเลือกคัดลอกข้อความได้ ถ้าต้องการข้อความจริง ให้ใช้ปุ่มพิมพ์แล้วเลือก "บันทึกเป็น PDF"
+- ข้อมูลรายการ (ทะเบียน ยี่ห้อ ฯลฯ) อ่านได้โดยทุกคนที่มี URL ของสคริปต์ ไม่ควรแชร์ URL ต่อสาธารณะ
+- ใช้ TypeScript 6 เพราะ `typescript-eslint` ยังไม่รองรับ TypeScript 7
