@@ -7,10 +7,10 @@
 }
 
 @media print {
-  /* The report is a set of full-page A4 images, so there are no page margins */
+  /* A small margin, so the page never depends on a printer printing right to the paper edge */
   @page {
     size: A4 portrait;
-    margin: 0;
+    margin: 6mm;
   }
 
   html,
@@ -34,12 +34,16 @@
     display: block !important;
   }
 
+  /* Each report page is scaled down (keeping its proportions) to fit the printable area of the
+     sheet, whatever margins or paper size the print dialog uses, so its footer stays at the
+     bottom of the same sheet and never spills onto the next one. */
   #print-report img {
     display: block;
-    width: 210mm;
-    /* a hair under 297mm so the last page never spills onto an extra blank sheet */
-    height: 296.8mm;
+    margin: 0 auto;
+    max-width: 100%;
+    max-height: 99vh;
     break-after: page;
+    break-inside: avoid;
   }
 
   #print-report img:last-child {
