@@ -10,6 +10,7 @@ import {
   SOUTH_PROVINCES 
 } from '../utils/constants';
 import { DropdownSelect, DropdownGroup } from './DropdownSelect';
+import { DateField } from './DateField';
 import { calculateNights, formatThaiDate, getTodayDateString } from '../utils/dateUtils';
 import { findOverlappingPermits, generatePermitId } from '../utils/permit';
 import { X, Car, Calendar, CheckCircle2, AlertCircle, AlertTriangle, Layers, Building2, Palette } from 'lucide-react';
@@ -417,22 +418,21 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen'>> = ({
             {/* ช่วงวันที่ขอจอด */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1">
+                <label htmlFor="permit-start-date" className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1">
                   <Calendar className="w-3.5 h-3.5 text-slate-500" />
                   <span>วันที่เริ่มจอด <span className="text-rose-500">*</span></span>
                 </label>
-                <input
-                  type="date"
+                <DateField
+                  id="permit-start-date"
                   required
                   value={startDate}
-                  onChange={(e) => {
-                    setStartDate(e.target.value);
+                  onChange={(iso) => {
+                    setStartDate(iso);
                     clearOverlaps();
-                    if (endDate < e.target.value) {
-                      setEndDate(e.target.value);
+                    if (iso && endDate < iso) {
+                      setEndDate(iso);
                     }
                   }}
-                  className="w-full text-xs sm:text-sm border border-slate-300 rounded-lg px-3 py-2 bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500 font-mono"
                 />
                 <span className="text-[11px] text-slate-500 mt-0.5 block">
                   {formatThaiDate(startDate, 'short')}
@@ -440,20 +440,19 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen'>> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1">
+                <label htmlFor="permit-end-date" className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1">
                   <Calendar className="w-3.5 h-3.5 text-slate-500" />
                   <span>วันที่สิ้นสุดการจอด <span className="text-rose-500">*</span></span>
                 </label>
-                <input
-                  type="date"
+                <DateField
+                  id="permit-end-date"
                   required
                   min={startDate}
                   value={endDate}
-                  onChange={(e) => {
-                    setEndDate(e.target.value);
+                  onChange={(iso) => {
+                    setEndDate(iso);
                     clearOverlaps();
                   }}
-                  className="w-full text-xs sm:text-sm border border-slate-300 rounded-lg px-3 py-2 bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500 font-mono"
                 />
                 <span className="text-[11px] text-slate-500 mt-0.5 block">
                   {formatThaiDate(endDate, 'short')}

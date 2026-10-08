@@ -176,3 +176,34 @@ export function formatThaiDateTime(date: Date): string {
   const mm = String(date.getMinutes()).padStart(2, '0');
   return `${date.getDate()} ${THAI_MONTHS_SHORT[date.getMonth()]} ${date.getFullYear() + 543} ${hh}:${mm} น.`;
 }
+
+/**
+ * "2026-10-08" -> "08/10/2026"; anything that is not a real date -> ""
+ */
+export function isoToDmy(iso: string): string {
+  if (!isIsoDate(iso)) return '';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+/**
+ * Turns what the user types into dd/mm/yyyy: keeps digits only (max 8) and adds the slashes.
+ * A slash appears once a third digit is typed, so backspace can always remove it.
+ */
+export function maskDmy(raw: string): string {
+  const digits = raw.replace(/\D/g, '').slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+}
+
+/**
+ * "08/10/2026" (or with a Buddhist-era year, "08/10/2569") -> "2026-10-08"; invalid -> ""
+ */
+export function parseDmy(text: string): string {
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(text.trim());
+  if (!m) return '';
+  const year = Number(m[3]) > 2400 ? Number(m[3]) - 543 : Number(m[3]);
+  const iso = `${String(year).padStart(4, '0')}-${m[2]}-${m[1]}`;
+  return isIsoDate(iso) ? iso : '';
+}

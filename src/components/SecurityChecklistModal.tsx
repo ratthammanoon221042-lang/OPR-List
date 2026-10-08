@@ -3,6 +3,7 @@ import { ParkingPermit } from '../types/parking';
 import { isPermitActiveOnDate, formatThaiDate, getTodayDateString } from '../utils/dateUtils';
 import { downloadParkingReportPdf } from '../utils/pdfGenerator';
 import { downloadCsv, downloadExcel } from '../utils/exportData';
+import { DateField } from './DateField';
 import { X, Printer, Download, FileSpreadsheet, Calendar, FileDown, Loader2 } from 'lucide-react';
 
 interface SecurityChecklistModalProps {
@@ -144,13 +145,10 @@ const SecurityChecklist: React.FC<Omit<SecurityChecklistModalProps, 'isOpen'>> =
         {/* Date Selector Bar - ALWAYS VISIBLE */}
         <div className="bg-slate-50 border-b border-slate-200 px-5 py-2.5 flex items-center justify-between text-xs text-slate-600 shrink-0">
           <div className="flex items-center gap-2">
-            <label className="font-semibold text-slate-700">เลือกวันที่สำหรับรายงาน:</label>
-            <input
-              type="date"
-              value={targetDate}
-              onChange={(e) => e.target.value && setTargetDate(e.target.value)}
-              className="border border-slate-300 rounded px-2.5 py-1 bg-white focus:outline-hidden focus:ring-1 focus:ring-blue-500 cursor-pointer text-xs"
-            />
+            <label htmlFor="report-date" className="font-semibold text-slate-700">เลือกวันที่สำหรับรายงาน:</label>
+            <div className="w-36">
+              <DateField id="report-date" value={targetDate} onChange={(iso) => iso && setTargetDate(iso)} />
+            </div>
           </div>
 
           <div className="font-medium text-slate-700 flex items-center gap-2">

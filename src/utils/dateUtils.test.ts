@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   calculateNights, dateRangesOverlap, formatThaiDate, formatThaiDateTime, getDailySummaries, getDaysInMonth,
+  isoToDmy, maskDmy, parseDmy,
   isIsoDate, isPermitActiveOnDate, parseFlexibleDate,
 } from './dateUtils';
 import { ParkingPermit } from '../types/parking';
@@ -124,5 +125,40 @@ describe('formatThaiDateTime', () => {
   it('writes the Buddhist year and a 24-hour time', () => {
     expect(formatThaiDateTime(new Date(2026, 9, 8, 14, 5))).toBe('8 ต.ค. 2569 14:05 น.');
     expect(formatThaiDateTime(new Date(2026, 0, 1, 0, 0))).toBe('1 ม.ค. 2569 00:00 น.');
+  });
+});
+
+describe('dd/mm/yyyy helpers', () => {
+  it('isoToDmy writes the day first', () => {
+    expect(isoToDmy('2026-10-08')).toBe('08/10/2026');
+    expect(isoToDmy('')).toBe('');
+    expect(isoToDmy('2026-02-31')).toBe('');
+  });
+
+  it('maskDmy adds the slashes while typing and ignores other characters', () => {
+    expect(maskDmy('0')).toBe('0');
+    expect(maskDmy('08')).toBe('08');
+    expect(maskDmy('081')).toBe('08/1');
+    expect(maskDmy('0810')).toBe('08/10');
+    expect(maskDmy('08102')).toBe('08/10/2');
+    expect(maskDmy('08102026')).toBe('08/10/2026');
+    expect(maskDmy('08/10/2026999')).toBe('08/10/2026');
+    expect(maskDmy('8 Oct')).toBe('8');
+    expect(maskDmy('08/')).toBe('08'); // the slash can be deleted with backspace
+  });
+
+  it('parseDmy accepts real dates only and understands Buddhist-era years', () => {
+    expect(parseDmy('08/10/2026')).toBe('2026-10-08');
+    expect(parseDmy('08/10/2569')).toBe('2026-10-08');
+    expect(parseDmy('29/02/2028')).toBe('2028-02-29');
+    expect(parseDmy('29/02/2026')).toBe('');
+    expect(parseDmy('31/04/2026')).toBe('');
+    expect(parseDmy('08/10/26')).toBe('');
+    expect(parseDmy('2026-10-08')).toBe('');
+    expect(parseDmy('')).toBe('');
+  });
+
+  it('round-trips', () => {
+    for (const iso of ['2026-01-01', '2026-12-31', '2028-02-29']) expect(parseDmy(isoToDmy(iso))).toBe(iso);
   });
 });
