@@ -16,6 +16,8 @@ interface DropdownSelectProps {
   searchable?: boolean;
   hint?: string;
   icon?: React.ReactNode;
+  /** For optional fields: text of a first row that clears the choice (e.g. "ไม่ระบุ") */
+  clearLabel?: string;
 }
 
 export const DropdownSelect: React.FC<DropdownSelectProps> = ({
@@ -28,6 +30,7 @@ export const DropdownSelect: React.FC<DropdownSelectProps> = ({
   searchable = true,
   hint,
   icon,
+  clearLabel,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -160,6 +163,18 @@ export const DropdownSelect: React.FC<DropdownSelectProps> = ({
 
           {/* Options List */}
           <div className="max-h-56 sm:max-h-64 overflow-y-auto p-1 divide-y divide-slate-50">
+            {clearLabel && !q && (
+              <button
+                type="button"
+                onClick={() => handleSelect('')}
+                className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs sm:text-sm flex items-center justify-between transition-colors cursor-pointer italic ${
+                  value === '' ? 'bg-blue-50 text-blue-700 font-bold' : 'text-slate-500 hover:bg-slate-100'
+                }`}
+              >
+                <span>{clearLabel}</span>
+                {value === '' && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
+              </button>
+            )}
             {filteredOptions.length === 0 ? (
               <div className="py-4 text-center text-xs text-slate-400">
                 ไม่พบข้อมูล &quot;{searchQuery}&quot;

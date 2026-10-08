@@ -4,12 +4,9 @@ import {
   VEHICLE_BRANDS, 
   VEHICLE_COLORS, 
   DEPARTMENTS, 
-  CENTRAL_PROVINCES, 
-  NORTH_PROVINCES, 
-  NORTHEAST_PROVINCES, 
-  SOUTH_PROVINCES 
+  PROVINCE_OPTIONS,
 } from '../utils/constants';
-import { DropdownSelect, DropdownGroup } from './DropdownSelect';
+import { DropdownSelect } from './DropdownSelect';
 import { DateField } from './DateField';
 import { calculateNights, formatThaiDate, getTodayDateString } from '../utils/dateUtils';
 import { findOverlappingPermits, generatePermitId } from '../utils/permit';
@@ -78,26 +75,6 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen'>> = ({
 
   const nights = calculateNights(startDate, endDate);
 
-  // Grouped Provinces for Dropdown: Central first starting with Bangkok
-  const provinceGroups: DropdownGroup[] = [
-    {
-      group: 'ภาคกลาง (เริ่มที่ กรุงเทพมหานคร)',
-      items: CENTRAL_PROVINCES,
-    },
-    {
-      group: 'ภาคเหนือ',
-      items: NORTH_PROVINCES,
-    },
-    {
-      group: 'ภาคตะวันออกเฉียงเหนือ',
-      items: NORTHEAST_PROVINCES,
-    },
-    {
-      group: 'ภาคใต้',
-      items: SOUTH_PROVINCES,
-    },
-  ];
-
   const handleClose = onClose;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -124,9 +101,10 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen'>> = ({
       return;
     }
 
+    // Department is optional; only "อื่นๆ" (other) needs a name typed in
     const finalDept = (department === 'อื่นๆ' ? customDepartment : department).trim();
-    if (!finalDept) {
-      setErrorMsg('กรุณาเลือกหรือระบุหน่วยงาน');
+    if (department === 'อื่นๆ' && !finalDept) {
+      setErrorMsg('กรุณาระบุชื่อหน่วยงาน หรือเลือก "ไม่ระบุหน่วยงาน"');
       return;
     }
 
@@ -288,11 +266,12 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen'>> = ({
                 )}
               </div>
 
-              {/* หน่วยงาน (รีเซ็ตว่างไว้ทุกครั้ง) */}
+              {/* หน่วยงาน (ไม่บังคับ) */}
               <div>
                 <DropdownSelect
                   label="หน่วยงาน"
-                  required
+                  hint="(ไม่บังคับ)"
+                  clearLabel="ไม่ระบุหน่วยงาน"
                   value={department}
                   onChange={(val) => setDepartment(val)}
                   options={DEPARTMENTS}
@@ -364,7 +343,7 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen'>> = ({
                     setProvince(val);
                     clearOverlaps();
                   }}
-                  options={provinceGroups}
+                  options={PROVINCE_OPTIONS}
                   searchable
                   hint="(เริ่มที่ กทม.)"
                   placeholder="เลือกจังหวัด"

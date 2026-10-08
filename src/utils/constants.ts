@@ -74,7 +74,7 @@ export const DEPARTMENTS = [
   'อื่นๆ',
 ];
 
-// จังหวัดใช้เป็นดรอปดาวน์ 77 จังหวัดของไทย เรียงลำดับจากภาคกลาง เริ่มที่กรุงเทพก่อน
+// จังหวัดของไทย 77 จังหวัด (แยกตามภาคเพื่อใช้จัดกลุ่มข้อมูลเท่านั้น หน้าฟอร์มใช้ PROVINCE_OPTIONS ที่เป็นรายการเดียว)
 export const CENTRAL_PROVINCES = [
   'กรุงเทพมหานคร',
   'นนทบุรี',
@@ -169,6 +169,15 @@ export const THAI_PROVINCES = [
   ...NORTH_PROVINCES,
   ...NORTHEAST_PROVINCES,
   ...SOUTH_PROVINCES,
+];
+
+/**
+ * Province choices in the form: one plain list (no region headings), Bangkok first and the rest
+ * in Thai alphabetical order so a province is easy to find.
+ */
+export const PROVINCE_OPTIONS: string[] = [
+  'กรุงเทพมหานคร',
+  ...THAI_PROVINCES.filter((p) => p !== 'กรุงเทพมหานคร').sort((a, b) => a.localeCompare(b, 'th')),
 ];
 
 // ลบข้อมูลจำลองออกทั้งหมด ใช้ข้อมูลจริงจาก Google Sheets เป็นหลัก
