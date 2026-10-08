@@ -9,7 +9,7 @@ import {
   loadCachedPermits, saveCachedPermits, getAuthToken, setAuthToken, loadLastSynced, saveLastSynced,
 } from './utils/storage';
 import {
-  fetchPermits, addPermit, updatePermit, deletePermit, isApiError,
+  fetchPermits, addPermit, updatePermit, deletePermit, isApiError, isOutcomeUnknown,
 } from './services/sheetApi';
 import { Header } from './components/Header';
 import { OvernightParkingDashboard } from './components/OvernightParkingDashboard';
@@ -22,9 +22,11 @@ import { PrintReport } from './components/PrintReport';
 import { ConfirmModal } from './components/ConfirmModal';
 import { formatThaiDate, getTodayDateString, isPermitActiveOnDate } from './utils/dateUtils';
 import { renderReportPages } from './utils/pdfGenerator';
-import { CheckCircle2, AlertCircle, XCircle } from 'lucide-react';
+import { attemptWrite } from './utils/confirmedWrite';
+import { samePermitContent } from './utils/permit';
+import { CheckCircle2, AlertCircle, AlertTriangle, XCircle } from 'lucide-react';
 
-type ToastType = 'success' | 'info' | 'error';
+type ToastType = 'success' | 'info' | 'warning' | 'error';
 
 // Apps Script is slow and rate-limited, so check in the background only now and then
 const AUTO_REFRESH_MS = 5 * 60_000;
@@ -70,7 +72,7 @@ export default function App() {
   const showToast = useCallback((text: string, type: ToastType = 'success') => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     setToast({ text, type });
-    toastTimer.current = setTimeout(() => setToast(null), type === 'error' ? 6000 : 3000);
+    toastTimer.current = setTimeout(() => setToast(null), type === 'error' ? 7000 : type === 'warning' ? 12000 : 3000);
   }, []);
   useEffect(() => () => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -171,6 +173,8 @@ export default function App() {
     apply: (prev: ParkingPermit[]) => ParkingPermit[];
     revert: (prev: ParkingPermit[]) => ParkingPermit[];
     call: (token: string) => Promise<ParkingPermit[]>;
+    /** True when the sheet's contents show the change was applied */
+    verify: (list: ParkingPermit[]) => boolean;
     success: string;
     failure: string;
   }) => {
@@ -186,24 +190,36 @@ export default function App() {
     const run = writeQueue.current.then(async () => {
       let serverList: ParkingPermit[] | null = null;
       try {
-        // A timeout or dropped connection does not tell whether the sheet got the request.
-        // Adding / editing / deleting by id is safe to repeat, so try once more.
-        try {
-          serverList = await opts.call(token);
-        } catch (firstError) {
-          if (!(isApiError(firstError) && firstError.code === 'network')) throw firstError;
-          showToast('Google Sheet ตอบช้า กำลังลองส่งซ้ำ...', 'info');
-          serverList = await opts.call(token);
-        }
-        showToast(`${opts.success} และบันทึกลง Google Sheet แล้ว`, 'success');
-      } catch (err) {
-        setPermits(opts.revert);
-        if (isApiError(err) && err.code === 'unauthorized') {
-          setToken(null);
-          showToast('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่ (รายการนี้ยังไม่ถูกบันทึก)', 'error');
-          setIsLoginModalOpen(true);
+        const outcome = await attemptWrite({
+          call: () => opts.call(token),
+          readFresh: () => fetchPermits(true),
+          isUnclear: isOutcomeUnknown,
+          verify: opts.verify,
+        });
+
+        if (outcome.status === 'saved') {
+          serverList = outcome.list;
+          showToast(`${opts.success} และบันทึกลง Google Sheet แล้ว`, 'success');
+        } else if (outcome.status === 'unknown') {
+          // Neither the write nor a check of the sheet got through. Keep the item on screen:
+          // the next successful sync (retried automatically) shows what really happened.
+          showToast(
+            'ยังยืนยันไม่ได้ว่าบันทึกลง Google Sheet แล้วหรือยัง เพราะติดต่อไม่ได้ชั่วคราว รายการยังแสดงอยู่และแอปจะตรวจสอบให้อัตโนมัติ ถ้ารายการหายไปเอง แปลว่ายังไม่ถูกบันทึก ให้บันทึกใหม่อีกครั้ง',
+            'warning'
+          );
         } else {
-          showToast(`${opts.failure}: ${err instanceof Error ? err.message : 'ไม่ทราบสาเหตุ'}`, 'error');
+          setPermits(opts.revert);
+          const err = outcome.error;
+          if (isApiError(err) && err.code === 'unauthorized') {
+            setToken(null);
+            showToast('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่ (รายการนี้ยังไม่ถูกบันทึก)', 'error');
+            setIsLoginModalOpen(true);
+          } else {
+            showToast(
+              `${opts.failure}: ${err instanceof Error ? err.message : 'ไม่ทราบสาเหตุ'} (ตรวจสอบแล้วว่ายังไม่ถูกบันทึก ลองใหม่อีกครั้ง)`,
+              'error'
+            );
+          }
         }
       } finally {
         pendingWrites.current--;
@@ -230,6 +246,10 @@ export default function App() {
         apply: (prev) => prev.map((p) => (p.id === permit.id ? permit : p)),
         revert: (prev) => prev.map((p) => (p.id === permit.id ? editing : p)),
         call: (t) => updatePermit(t, permit),
+        verify: (list) => {
+          const found = list.find((p) => p.id === permit.id);
+          return !!found && samePermitContent(found, permit);
+        },
         success: `แก้ไขรายการทะเบียน ${permit.licensePlate} เรียบร้อย`,
         failure: 'แก้ไขรายการไม่สำเร็จ',
       });
@@ -238,6 +258,7 @@ export default function App() {
         apply: (prev) => [...prev, permit],
         revert: (prev) => prev.filter((p) => p.id !== permit.id),
         call: (t) => addPermit(t, permit),
+        verify: (list) => list.some((p) => p.id === permit.id),
         success: `บันทึกคำขอทะเบียน ${permit.licensePlate} เรียบร้อย`,
         failure: 'บันทึกรายการไม่สำเร็จ',
       });
@@ -252,6 +273,7 @@ export default function App() {
       apply: (prev) => prev.filter((p) => p.id !== target.id),
       revert: (prev) => (prev.some((p) => p.id === target.id) ? prev : [...prev, target]),
       call: (t) => deletePermit(t, target.id),
+      verify: (list) => !list.some((p) => p.id === target.id),
       success: `ลบรายการรถทะเบียน ${target.licensePlate} เรียบร้อย`,
       failure: 'ลบรายการไม่สำเร็จ',
     });
@@ -432,6 +454,7 @@ export default function App() {
         >
           {toast.type === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />}
           {toast.type === 'info' && <AlertCircle className="w-4 h-4 text-blue-400 shrink-0" />}
+          {toast.type === 'warning' && <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />}
           {toast.type === 'error' && <XCircle className="w-4 h-4 text-rose-400 shrink-0" />}
           <span>{toast.text}</span>
         </div>

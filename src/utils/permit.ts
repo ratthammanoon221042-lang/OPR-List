@@ -75,6 +75,23 @@ export function generatePermitId(startDate: string): string {
   return `PK-${startDate.replace(/-/g, '')}-${suffix}`;
 }
 
+/** Same vehicle, floor, department and dates (ignores id, createdAt and how the plate was typed) */
+export function samePermitContent(a: ParkingPermit, b: ParkingPermit): boolean {
+  const x = normalizePermit(a);
+  const y = normalizePermit(b);
+  return (
+    cleanPlate(x.licensePlate) === cleanPlate(y.licensePlate) &&
+    x.province === y.province &&
+    x.vehicleBrand === y.vehicleBrand &&
+    x.vehicleColor === y.vehicleColor &&
+    x.parkingFloor === y.parkingFloor &&
+    (x.department ?? '') === (y.department ?? '') &&
+    (x.subDepartment ?? '') === (y.subDepartment ?? '') &&
+    x.startDate === y.startDate &&
+    x.endDate === y.endDate
+  );
+}
+
 export const cleanPlate = (plate: string): string => plate.replace(/\s+/g, '').toLowerCase();
 
 /**

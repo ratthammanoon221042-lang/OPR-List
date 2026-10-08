@@ -1,5 +1,6 @@
 import { ParkingPermit } from '../types/parking';
 import { normalizePermit } from '../utils/permit';
+import { loadLastSynced } from '../utils/storage';
 
 /**
  * Client for the Google Apps Script backend (apps-script/Code.gs).
@@ -25,14 +26,34 @@ export type ApiErrorCode =
 
 export class ApiError extends Error {
   code: ApiErrorCode;
-  constructor(code: ApiErrorCode, message: string) {
+  /** True when we gave up waiting (as opposed to the connection failing quickly) */
+  timedOut: boolean;
+  constructor(code: ApiErrorCode, message: string, timedOut = false) {
     super(message);
     this.name = 'ApiError';
     this.code = code;
+    this.timedOut = timedOut;
   }
 }
 
 export const isApiError = (e: unknown): e is ApiError => e instanceof ApiError;
+
+/**
+ * True when we cannot tell whether the sheet received the request: the reply was lost, late,
+ * unreadable or an error status (a 404 or 5xx can come back for a request that did run).
+ * Answers the script itself gave, such as "wrong password", are definite and return false.
+ */
+export const isOutcomeUnknown = (e: unknown): boolean =>
+  isApiError(e) && (e.code === 'network' || e.code === 'server_error');
+
+/**
+ * Pointing at the Anyone setting only makes sense while the app has never reached the sheet.
+ * After one successful sync the deployment is known to work, so an odd reply is a transient problem.
+ */
+const setupHint = (): string =>
+  loadLastSynced() === null
+    ? ' ตรวจสอบว่า deploy สคริปต์ให้ "ผู้มีสิทธิ์เข้าถึง" เป็น "ทุกคน (Anyone)" และ URL ถูกต้อง (ลงท้ายด้วย /exec)'
+    : '';
 
 /** VITE_APPS_SCRIPT_URL (e.g. to point a test build at another deployment) wins over the default */
 export function getAppsScriptUrl(): string {
@@ -52,18 +73,16 @@ async function request(url: string, init?: RequestInit): Promise<ApiResponse> {
   try {
     const res = await fetch(url, { ...init, signal: controller.signal });
     if (!res.ok) {
-      // Apps Script answers an anonymous caller with 404 when the deployment is not open to "Anyone"
-      const hint = res.status === 404 ? ' ตรวจสอบว่า deploy สคริปต์ให้ "ผู้มีสิทธิ์เข้าถึง" เป็น "ทุกคน (Anyone)" และ URL ถูกต้อง' : '';
-      throw new ApiError('server_error', `เซิร์ฟเวอร์ตอบกลับผิดพลาด (HTTP ${res.status}).${hint}`);
+      throw new ApiError(
+        'server_error',
+        `Google Sheet ตอบกลับผิดปกติ (HTTP ${res.status})${res.status === 404 ? setupHint() : ''}`
+      );
     }
     let json: ApiResponse;
     try {
       json = (await res.json()) as ApiResponse;
     } catch {
-      throw new ApiError(
-        'server_error',
-        'ตอบกลับไม่ใช่ข้อมูลที่ถูกต้อง ตรวจสอบว่า deploy เป็น "ทุกคน (Anyone)" และใช้ URL ที่ลงท้ายด้วย /exec'
-      );
+      throw new ApiError('server_error', `Google Sheet ตอบกลับไม่ใช่ข้อมูลที่ถูกต้อง${setupHint()}`);
     }
     if (json.status !== 'success') {
       throw new ApiError(json.code ?? 'server_error', json.message ?? 'เกิดข้อผิดพลาดจากเซิร์ฟเวอร์');
@@ -72,7 +91,7 @@ async function request(url: string, init?: RequestInit): Promise<ApiResponse> {
   } catch (e) {
     if (isApiError(e)) throw e;
     if (e instanceof DOMException && e.name === 'AbortError') {
-      throw new ApiError('network', 'หมดเวลารอการตอบกลับจาก Google Sheet');
+      throw new ApiError('network', 'หมดเวลารอการตอบกลับจาก Google Sheet', true);
     }
     throw new ApiError('network', 'เชื่อมต่อ Google Sheet ไม่ได้ ตรวจสอบอินเทอร์เน็ตหรือ URL');
   } finally {
@@ -108,8 +127,9 @@ export async function fetchPermits(fresh = false): Promise<ParkingPermit[]> {
   try {
     return toPermits(await get());
   } catch (err) {
-    // A first request often only wakes the script up: try once more on timeouts / dropped connections
-    if (isApiError(err) && err.code === 'network') return toPermits(await get());
+    // A connection that dropped at once is worth one more try right away. After a timeout we have
+    // already waited long enough: leave the next attempt to the caller's timed retry.
+    if (isApiError(err) && err.code === 'network' && !err.timedOut) return toPermits(await get());
     throw err;
   }
 }

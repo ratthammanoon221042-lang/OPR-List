@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { findOverlappingPermits, generatePermitId, normalizePermit } from './permit';
+import { findOverlappingPermits, generatePermitId, normalizePermit, samePermitContent } from './permit';
 import { ParkingPermit } from '../types/parking';
 
 const base: ParkingPermit = {
@@ -97,5 +97,22 @@ describe('findOverlappingPermits', () => {
     expect(
       findOverlappingPermits({ ...base, id: 'NEW', licensePlate: '1 กข 4590' }, [base]).map((p) => p.id)
     ).toEqual(['PK-1']);
+  });
+});
+
+describe('samePermitContent', () => {
+  it('ignores id, createdAt and how the plate was typed', () => {
+    expect(samePermitContent(base, { ...base, id: 'OTHER', createdAt: '2020-01-01T00:00:00.000Z', licensePlate: '1กข 4590' })).toBe(true);
+  });
+
+  it('sees any real change', () => {
+    expect(samePermitContent(base, { ...base, parkingFloor: 'B2' })).toBe(false);
+    expect(samePermitContent(base, { ...base, endDate: '2026-10-09' })).toBe(false);
+    expect(samePermitContent(base, { ...base, department: 'สร.' })).toBe(false);
+    expect(samePermitContent(base, { ...base, licensePlate: '2ขค1111' })).toBe(false);
+  });
+
+  it('treats a missing and an empty sub-department alike', () => {
+    expect(samePermitContent({ ...base, subDepartment: undefined }, { ...base, subDepartment: '' })).toBe(true);
   });
 });
