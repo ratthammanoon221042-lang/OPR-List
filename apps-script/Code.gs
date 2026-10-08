@@ -36,6 +36,12 @@ var LOCKOUT_SECONDS = 5 * 60;
 var LIST_CACHE_TTL_SECONDS = 6 * 60 * 60;
 var CACHE_CHUNK_CHARS = 30000; // CacheService เก็บได้ 100KB ต่อค่า (ภาษาไทย 3 ไบต์/ตัวอักษร)
 
+// เวลาไทยเป็น UTC+7 ตลอดปี (ไม่มีเวลาออมแสง)
+var BANGKOK_OFFSET_HOURS = 7;
+// รูปแบบวันที่ที่แสดงในชีต: วันที่เริ่ม/สิ้นสุด = dd/mm/yyyy, วันที่บันทึกคำขอ = dd/mm/yyyy 15.00 น.
+// ค่าเก็บเป็นข้อความล้วน (ชีตจึงไม่แปลงวันที่เองหรือเลื่อนวันตามเขตเวลา) แอปอ่านกลับเป็น YYYY-MM-DD ให้เอง
+var DATE_FORMAT_VERSION = '2';
+
 var HEADERS = [
   'รหัสอ้างอิง',
   'หมายเลขทะเบียน',
@@ -107,6 +113,7 @@ function doPost(e) {
     lock.waitLock(20000);
 
     var sheet = getSheet_();
+    migrateDateFormats_(sheet); // ครั้งแรกหลังอัปเดตสคริปต์: แปลงแถวเดิมให้เป็นรูปแบบใหม่
     if (action === 'add') return handleAdd_(sheet, body.permit);
     if (action === 'update') return handleUpdate_(sheet, body.permit);
     if (action === 'delete') return handleDelete_(sheet, body.id);
@@ -446,10 +453,61 @@ function writeRow_(sheet, rowNumber, p) {
     p.vehicleColor,
     p.department || '-',
     p.subDepartment || '-',
-    p.startDate,
-    p.endDate,
-    p.createdAt
+    formatDmy_(p.startDate),
+    formatDmy_(p.endDate),
+    formatCreatedAt_(p.createdAt)
   ]]);
+}
+
+/** 'YYYY-MM-DD' -> 'dd/mm/yyyy' */
+function formatDmy_(iso) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso));
+  return m ? m[3] + '/' + m[2] + '/' + m[1] : String(iso);
+}
+
+/** เวลาที่บันทึก (ISO) -> 'dd/mm/yyyy 15.00 น.' เวลาไทย 24 ชั่วโมง */
+function formatCreatedAt_(isoDateTime) {
+  var d = new Date(isoDateTime);
+  if (isNaN(d.getTime())) return String(isoDateTime);
+  return Utilities.formatDate(d, TIMEZONE, 'dd/MM/yyyy HH.mm') + ' น.';
+}
+
+/**
+ * แปลงแถวเดิม (วันที่เป็น YYYY-MM-DD / เวลาเป็น ISO) ให้เป็นรูปแบบใหม่ ทำครั้งเดียว
+ * ต้องเรียกขณะถือล็อกอยู่แล้ว (หรือผ่าน formatSheetDates)
+ */
+function migrateDateFormats_(sheet) {
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty('DATE_FORMAT_VERSION') === DATE_FORMAT_VERSION) return;
+
+  var lastRow = sheet.getLastRow();
+  if (lastRow >= 2) {
+    var range = sheet.getRange(2, 9, lastRow - 1, 3); // คอลัมน์ I:K
+    var rows = range.getValues().map(function (r) {
+      var start = toIsoDate_(r[0]);
+      var end = toIsoDate_(r[1]) || start;
+      return [
+        start ? formatDmy_(start) : String(r[0] || ''),
+        end ? formatDmy_(end) : String(r[1] || ''),
+        r[2] ? formatCreatedAt_(toIsoDateTime_(r[2])) : ''
+      ];
+    });
+    range.setNumberFormat('@');
+    range.setValues(rows);
+  }
+  props.setProperty('DATE_FORMAT_VERSION', DATE_FORMAT_VERSION);
+  clearListCache_();
+}
+
+/** รันเองจากตัวแก้ไข Apps Script เพื่อแปลงแถวเดิมทันที (ไม่ต้องรอการบันทึกครั้งถัดไป) */
+function formatSheetDates() {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    migrateDateFormats_(getSheet_());
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function readAllPermits_(sheet) {
@@ -486,11 +544,11 @@ function readAllPermits_(sheet) {
 function toIsoDate_(value) {
   if (!value) return '';
   if (Object.prototype.toString.call(value) === '[object Date]') {
-    return Utilities.formatDate(value, TIMEZONE, 'yyyy-MM-dd');
+    return fixBuddhistYear_(Utilities.formatDate(value, TIMEZONE, 'yyyy-MM-dd'));
   }
   var s = String(value).trim();
   var iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return iso[1] + '-' + iso[2] + '-' + iso[3];
+  if (iso) return fixBuddhistYear_(iso[1] + '-' + iso[2] + '-' + iso[3]);
   var dmy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if (dmy) {
     var year = Number(dmy[3]);
@@ -500,10 +558,30 @@ function toIsoDate_(value) {
   return '';
 }
 
+/** แถวเก่าบางแถวมีปี พ.ศ. (2569-10-08): แปลงกลับเป็น ค.ศ. */
+function fixBuddhistYear_(isoDate) {
+  var year = Number(isoDate.substring(0, 4));
+  return year > 2400 ? (year - 543) + isoDate.substring(4) : isoDate;
+}
+
 function toIsoDateTime_(value) {
   if (!value) return new Date().toISOString();
-  if (Object.prototype.toString.call(value) === '[object Date]') return value.toISOString();
+  if (Object.prototype.toString.call(value) === '[object Date]') {
+    var fixed = new Date(value.getTime());
+    if (fixed.getUTCFullYear() > 2400) fixed.setUTCFullYear(fixed.getUTCFullYear() - 543);
+    return fixed.toISOString();
+  }
   var s = String(value).trim();
+
+  // 'dd/mm/yyyy 15.00 น.' (รูปแบบปัจจุบัน) หรือ '8/10/2569 14:00:00' (แถวเก่า) เวลาไทย
+  var th = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})[ T]+(\d{1,2})[.:](\d{2})(?:[.:](\d{2}))?/);
+  if (th) {
+    var year = Number(th[3]);
+    if (year > 2400) year -= 543;
+    var utc = Date.UTC(year, Number(th[2]) - 1, Number(th[1]), Number(th[4]) - BANGKOK_OFFSET_HOURS, Number(th[5]), Number(th[6] || 0));
+    return new Date(utc).toISOString();
+  }
+
   var d = new Date(s);
   return isNaN(d.getTime()) ? s : d.toISOString();
 }

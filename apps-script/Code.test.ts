@@ -86,7 +86,14 @@ function createEnvironment() {
       computeDigest: (_alg: string, text: string) => Array.from(createHash('sha256').update(text, 'utf8').digest(), (b) => (b > 127 ? b - 256 : b)),
       computeHmacSha256Signature: (value: string, key: string) => Array.from(createHmac('sha256', key).update(value, 'utf8').digest(), (b) => (b > 127 ? b - 256 : b)),
       getUuid: () => randomUUID(),
-      formatDate: (d: Date, tz: string) => d.toLocaleDateString('en-CA', { timeZone: tz }),
+      formatDate: (d: Date, tz: string, fmt: string) => {
+        const parts = Object.fromEntries(
+          new Intl.DateTimeFormat('en-GB', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+            .formatToParts(d)
+            .map((p) => [p.type, p.value])
+        );
+        return fmt.replace('yyyy', parts.year).replace('MM', parts.month).replace('dd', parts.day).replace('HH', parts.hour).replace('mm', parts.minute);
+      },
     },
     PropertiesService: {
       getScriptProperties: () => ({
@@ -108,12 +115,13 @@ function createEnvironment() {
 
   const factory = new Function(
     ...Object.keys(env),
-    `${source}\nreturn { doGet, doPost, resetPassword };`
+    `${source}\nreturn { doGet, doPost, resetPassword, formatSheetDates };`
   );
   const api = factory(...Object.values(env)) as {
     doGet: (e: unknown) => { getContent(): string };
     doPost: (e: unknown) => { getContent(): string };
     resetPassword: () => void;
+    formatSheetDates: () => void;
   };
 
   const post = (body: Record<string, unknown>) =>
@@ -308,6 +316,67 @@ describe('Code.gs', () => {
       expect(t.post({ action: 'update', token, permit: permit({ parkingFloor: 'B2', endDate: '2026-10-09' }) }).status).toBe('success');
       expect(t.list().data[0]).toMatchObject({ parkingFloor: 'B2', endDate: '2026-10-09' });
       expect(t.post({ action: 'update', token, permit: permit({ id: 'PK-404' }) }).code).toBe('not_found');
+    });
+
+    describe('sheet date formats', () => {
+      const sheetRow = (id: string) => t.sheets.get('รายการขอจอดรถ')!.data.find((r) => r[0] === id)!;
+
+      it('writes start/end as dd/mm/yyyy and the saved time as dd/mm/yyyy HH.mm น. (Thai time, 24 h)', () => {
+        t.post({ action: 'add', token, permit: permit({ id: 'A', createdAt: '2026-10-06T08:05:00.000Z' }) });
+        const row = sheetRow('A');
+        expect(row[8]).toBe('06/10/2026');
+        expect(row[9]).toBe('08/10/2026');
+        expect(row[10]).toBe('06/10/2026 15.05 น.'); // 08:05 UTC = 15:05 in Thailand
+      });
+
+      it('uses 24-hour time and moves to the next day after 17:00 UTC', () => {
+        t.post({ action: 'add', token, permit: permit({ id: 'B', createdAt: '2026-10-06T17:00:00.000Z' }) });
+        expect(sheetRow('B')[10]).toBe('07/10/2026 00.00 น.');
+        t.post({ action: 'add', token, permit: permit({ id: 'C', createdAt: '2026-10-06T08:00:00.000Z' }) });
+        expect(sheetRow('C')[10]).toBe('06/10/2026 15.00 น.');
+      });
+
+      it('the app still gets ISO dates back, with the original moment', () => {
+        t.post({ action: 'add', token, permit: permit({ id: 'A', createdAt: '2026-10-06T08:05:00.000Z' }) });
+        t.cache.clear();
+        const [row] = t.list().data;
+        expect(row).toMatchObject({ startDate: '2026-10-06', endDate: '2026-10-08', createdAt: '2026-10-06T08:05:00.000Z' });
+      });
+
+      it('an edit keeps the original saved time', () => {
+        t.post({ action: 'add', token, permit: permit({ id: 'A', createdAt: '2026-10-06T08:05:00.000Z' }) });
+        t.post({ action: 'update', token, permit: permit({ id: 'A', createdAt: '2026-10-06T08:05:00.000Z', parkingFloor: 'B2' }) });
+        expect(sheetRow('A')[10]).toBe('06/10/2026 15.05 น.');
+        expect(sheetRow('A')[3]).toBe('B2');
+      });
+
+      it('rows written before this change are converted on the next save (once)', () => {
+        t.list();
+        const sheet = t.sheets.get('รายการขอจอดรถ')!;
+        sheet.data.push(
+          ['O1', '1กข4590', 'กรุงเทพมหานคร', 'B1', 'Honda', 'ดำ', 'สร.', '-', '2026-10-06', '2026-10-07', '2026-10-06T08:05:00.000Z'],
+          ['O2', '2ขค2222', 'นนทบุรี', 'B2', 'Mazda', 'แดง', '-', '-', '06/10/2569', '07/10/2569', '8/10/2569 14:00:00'],
+          ['O3', '3งง3333', 'นนทบุรี', 'B2', 'Kia', 'เทา', '-', '-', new Date('2026-10-09T00:00:00+07:00'), new Date('2026-10-09T00:00:00+07:00'), new Date('2569-10-08T10:53:31.000Z')]
+        );
+        t.post({ action: 'add', token, permit: permit({ id: 'NEW' }) });
+        expect(sheetRow('O1').slice(8)).toEqual(['06/10/2026', '07/10/2026', '06/10/2026 15.05 น.']);
+        expect(sheetRow('O2').slice(8)).toEqual(['06/10/2026', '07/10/2026', '08/10/2026 14.00 น.']);
+        expect(sheetRow('O3').slice(8)).toEqual(['09/10/2026', '09/10/2026', '08/10/2026 17.53 น.']);
+        t.cache.clear();
+        const rows = t.list().data;
+        expect(rows.find((r: { id: string }) => r.id === 'O2')).toMatchObject({ startDate: '2026-10-06', createdAt: '2026-10-08T07:00:00.000Z' });
+        expect(rows.find((r: { id: string }) => r.id === 'O3')).toMatchObject({ startDate: '2026-10-09', createdAt: '2026-10-08T10:53:00.000Z' });
+        expect(t.props.get('DATE_FORMAT_VERSION')).toBe('2');
+      });
+
+      it('formatSheetDates() converts the old rows on demand and clears the list cache', () => {
+        t.list();
+        const sheet = t.sheets.get('รายการขอจอดรถ')!;
+        sheet.data.push(['O1', '1กข4590', 'กรุงเทพมหานคร', 'B1', 'Honda', 'ดำ', 'สร.', '-', '2026-10-06', '2026-10-07', '2026-10-06T08:05:00.000Z']);
+        t.api.formatSheetDates();
+        expect(sheetRow('O1').slice(8)).toEqual(['06/10/2026', '07/10/2026', '06/10/2026 15.05 น.']);
+        expect(t.cache.get('list:n')).toBeUndefined();
+      });
     });
 
     it.each([
