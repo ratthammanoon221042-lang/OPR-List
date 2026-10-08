@@ -7,14 +7,17 @@
 }
 
 @media print {
+  /* The report is a set of full-page A4 images, so there are no page margins */
   @page {
     size: A4 portrait;
-    margin: 12mm;
+    margin: 0;
   }
 
+  html,
   body {
+    margin: 0 !important;
+    padding: 0 !important;
     background: #ffffff !important;
-    color: #000000 !important;
   }
 
   /* Print only the report: hide the app, toasts and every open modal */
@@ -31,11 +34,15 @@
     display: block !important;
   }
 
-  #print-report thead {
-    display: table-header-group;
+  #print-report img {
+    display: block;
+    width: 210mm;
+    /* a hair under 297mm so the last page never spills onto an extra blank sheet */
+    height: 296.8mm;
+    break-after: page;
   }
 
-  #print-report tr {
-    break-inside: avoid;
+  #print-report img:last-child {
+    break-after: auto;
   }
 }

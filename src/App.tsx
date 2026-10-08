@@ -20,7 +20,8 @@ import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { SyncStatusBar, SyncState } from './components/SyncStatusBar';
 import { PrintReport } from './components/PrintReport';
 import { ConfirmModal } from './components/ConfirmModal';
-import { formatThaiDate, getTodayDateString } from './utils/dateUtils';
+import { formatThaiDate, getTodayDateString, isPermitActiveOnDate } from './utils/dateUtils';
+import { renderReportPages } from './utils/pdfGenerator';
 import { CheckCircle2, AlertCircle, XCircle } from 'lucide-react';
 
 type ToastType = 'success' | 'info' | 'error';
@@ -55,9 +56,6 @@ export default function App() {
 
   // What to do once the user has logged in (open the form, ask to delete, ...)
   const afterLoginRef = useRef<(() => void) | null>(null);
-
-  // Print request: a counter so printing the same date twice still triggers
-  const [printRequest, setPrintRequest] = useState<{ date: string; n: number } | null>(null);
 
   // Toast
   const [toast, setToast] = useState<{ text: string; type: ToastType } | null>(null);
@@ -274,13 +272,32 @@ export default function App() {
     showToast('ออกจากระบบเรียบร้อยแล้ว', 'info');
   };
 
-  // Printing: render the report first, then open the print dialog
-  const requestPrint = (date: string) => setPrintRequest((prev) => ({ date, n: (prev?.n ?? 0) + 1 }));
+  // Printing: draw the same A4 pages as the PDF, then open the print dialog.
+  // `n` makes printing the same date twice still trigger the effect.
+  const [printJob, setPrintJob] = useState<{ pages: string[]; n: number } | null>(null);
+  const requestPrint = async (date: string) => {
+    try {
+      const active = permits.filter((p) => isPermitActiveOnDate(p, date));
+      const pages = await renderReportPages(active, date, lastSyncedAt);
+      // Make sure every image is ready, otherwise the printout can come out blank
+      await Promise.all(
+        pages.map((src) => {
+          const img = new Image();
+          img.src = src;
+          return img.decode();
+        })
+      );
+      setPrintJob((prev) => ({ pages, n: (prev?.n ?? 0) + 1 }));
+    } catch (err) {
+      console.error('Print preparation failed', err);
+      showToast('เตรียมหน้าพิมพ์ไม่สำเร็จ ลองดาวน์โหลด PDF แล้วพิมพ์จากไฟล์แทน', 'error');
+    }
+  };
   useEffect(() => {
-    if (!printRequest) return;
+    if (!printJob) return;
     const timer = setTimeout(() => window.print(), 100);
     return () => clearTimeout(timer);
-  }, [printRequest]);
+  }, [printJob]);
 
   return (
     <div id="app-root" className="min-h-screen bg-slate-100/80 flex flex-col font-sans text-slate-800">
@@ -393,7 +410,7 @@ export default function App() {
       )}
 
       {/* Direct child of #app-root: the only element visible when printing */}
-      <PrintReport permits={permits} date={printRequest?.date ?? selectedDate} dataAsOf={lastSyncedAt} />
+      <PrintReport pages={printJob?.pages ?? []} />
     </div>
   );
 }

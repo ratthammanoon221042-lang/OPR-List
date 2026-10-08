@@ -2,12 +2,12 @@ import { ParkingPermit } from '../types/parking';
 import { formatThaiDate, formatThaiDateTime } from './dateUtils';
 
 /**
- * Client-side PDF generator for the overnight parking report.
+ * The overnight parking report as A4 pages: used for the PDF download and for printing,
+ * so both are exactly the same.
  *
  * Each page is drawn on an HTML5 canvas so the browser does the Thai text shaping
- * (jsPDF cannot position Thai vowels / tone marks correctly), then the pages are
- * placed into an A4 PDF. The report flows over as many pages as needed and the
- * table header is repeated on every page.
+ * (jsPDF cannot position Thai vowels / tone marks correctly). The report flows over as
+ * many pages as needed and the table header is repeated on every page.
  */
 
 const PAGE_W = 1240; // A4 at ~150 DPI
@@ -225,13 +225,13 @@ function drawPage(
   ctx.fillText(`หน้า ${pageNo}/${pageCount}`, PAGE_W - MARGIN_X, FOOTER_Y);
 }
 
-export async function downloadParkingReportPdf(
+/** Draws every page of the report and returns them as JPEG data URLs (A4, ~300 DPI) */
+export async function renderReportPages(
   permits: ParkingPermit[],
   targetDate: string,
   dataAsOf?: Date | null
-): Promise<void> {
+): Promise<string[]> {
   await ensureFontsLoaded();
-  const { jsPDF } = await import('jspdf');
 
   const pages = paginate(permits);
   const summary = {
@@ -249,16 +249,28 @@ export async function downloadParkingReportPdf(
   if (!ctx) throw new Error('Canvas 2D context not available');
   ctx.scale(SCALE, SCALE);
 
+  let firstIndex = 0;
+  return pages.map((rows, i) => {
+    drawPage(ctx, rows, firstIndex, i + 1, pages.length, summary);
+    firstIndex += rows.length;
+    return canvas.toDataURL('image/jpeg', 0.92);
+  });
+}
+
+export async function downloadParkingReportPdf(
+  permits: ParkingPermit[],
+  targetDate: string,
+  dataAsOf?: Date | null
+): Promise<void> {
+  const images = await renderReportPages(permits, targetDate, dataAsOf);
+  const { jsPDF } = await import('jspdf');
+
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pdfW = 210;
   const pdfH = (PAGE_H * pdfW) / PAGE_W;
-
-  let firstIndex = 0;
-  pages.forEach((rows, i) => {
-    drawPage(ctx, rows, firstIndex, i + 1, pages.length, summary);
-    firstIndex += rows.length;
+  images.forEach((image, i) => {
     if (i > 0) pdf.addPage('a4', 'portrait');
-    pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, pdfW, pdfH);
+    pdf.addImage(image, 'JPEG', 0, 0, pdfW, pdfH);
   });
 
   const filename = `รายงานทะเบียนรถขออนุญาตจอด_${targetDate}.pdf`;
