@@ -196,6 +196,42 @@ describe('relay (Cloudflare Worker) in front of the script', () => {
     expect(api3.getLastRoute()).toBe('direct');
   });
 
+  it('says why the relay was skipped, and clears it when the relay works again', async () => {
+    vi.useFakeTimers();
+    const api = await load(PROXY);
+    expect(api.getRelayProblem()).toBeNull();
+
+    const failing = (relayReply: () => Promise<Response>) =>
+      vi.fn().mockImplementation((url: string) =>
+        new URL(String(url)).host === SCRIPT_HOST ? Promise.resolve(okList()) : relayReply()
+      );
+
+    // connection refused / blocked
+    vi.stubGlobal('fetch', failing(() => Promise.reject(new TypeError('Failed to fetch'))));
+    await api.fetchPermits();
+    expect(api.getRelayProblem()).toContain('ติดต่อตัวกลางไม่ได้');
+    expect(api.getRelayProblem()).toContain('workers.dev');
+
+    // relay answered with an error status
+    vi.setSystemTime(Date.now() + 3 * 60_000);
+    vi.stubGlobal('fetch', failing(() => Promise.resolve(reply(502, { status: 'error' }))));
+    await api.fetchPermits();
+    expect(api.getRelayProblem()).toContain('HTTP 502');
+
+    // relay gave up waiting
+    vi.setSystemTime(Date.now() + 3 * 60_000);
+    vi.stubGlobal('fetch', failing(() => Promise.reject(new DOMException('aborted', 'AbortError'))));
+    await api.fetchPermits();
+    expect(api.getRelayProblem()).toContain('ช้าเกินกำหนด');
+
+    // works again
+    vi.setSystemTime(Date.now() + 3 * 60_000);
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(okList())));
+    await api.fetchPermits();
+    expect(api.getLastRoute()).toBe('relay');
+    expect(api.getRelayProblem()).toBeNull();
+  });
+
   it('a relay error status (502/504) also falls back', async () => {
     const api = await load(PROXY);
     const fetchMock = vi.fn().mockImplementation((url: string) =>

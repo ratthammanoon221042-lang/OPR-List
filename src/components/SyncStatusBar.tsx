@@ -11,6 +11,8 @@ interface SyncStatusBarProps {
   lastDurationMs: number | null;
   /** How the latest request travelled: through the relay or straight to the script */
   route?: 'relay' | 'direct' | null;
+  /** Why the relay was skipped, when it was */
+  relayProblem?: string | null;
   errorMessage: string;
   onRefresh: () => void;
 }
@@ -20,6 +22,7 @@ export const SyncStatusBar: React.FC<SyncStatusBarProps> = ({
   lastSyncedAt,
   lastDurationMs,
   route,
+  relayProblem,
   errorMessage,
   onRefresh,
 }) => {
@@ -30,6 +33,7 @@ export const SyncStatusBar: React.FC<SyncStatusBarProps> = ({
     : null;
   const routeText = route === 'relay' ? ' · ผ่านตัวกลาง' : route === 'direct' ? ' · เรียกตรง' : '';
   const speed = lastDurationMs !== null ? ` (ตอบใน ${(lastDurationMs / 1000).toFixed(1)} วินาที${routeText})` : '';
+  const relayNote = route === 'direct' && relayProblem ? ` · ข้ามตัวกลางเพราะ: ${relayProblem}` : '';
 
   let message: string;
   if (isError) {
@@ -39,7 +43,7 @@ export const SyncStatusBar: React.FC<SyncStatusBarProps> = ({
   } else if (state === 'syncing') {
     message = 'กำลังซิงค์กับ Google Sheet...';
   } else {
-    message = `เชื่อมต่อ Google Sheet แล้ว${time ? ` · อัปเดตล่าสุด ${time} น.` : ''}${speed}`;
+    message = `เชื่อมต่อ Google Sheet แล้ว${time ? ` · อัปเดตล่าสุด ${time} น.` : ''}${speed}${relayNote}`;
   }
 
   return (

@@ -9,7 +9,7 @@ import {
   loadCachedPermits, saveCachedPermits, getAuthToken, setAuthToken, loadLastSynced, saveLastSynced,
 } from './utils/storage';
 import {
-  fetchPermits, addPermit, updatePermit, deletePermit, isApiError, isOutcomeUnknown, getLastRoute,
+  fetchPermits, addPermit, updatePermit, deletePermit, isApiError, isOutcomeUnknown, getLastRoute, getRelayProblem,
 } from './services/sheetApi';
 import { Header } from './components/Header';
 import { OvernightParkingDashboard } from './components/OvernightParkingDashboard';
@@ -51,6 +51,7 @@ export default function App() {
   const [syncError, setSyncError] = useState('');
   const [lastDurationMs, setLastDurationMs] = useState<number | null>(null);
   const [route, setRoute] = useState<'relay' | 'direct' | null>(null);
+  const [relayProblem, setRelayProblem] = useState<string | null>(null);
   // A newer version of the app has been published than the one running in this page
   const [newerVersion, setNewerVersion] = useState<string | null>(null);
   const failedRefreshes = useRef(0);
@@ -120,6 +121,7 @@ export default function App() {
       setLastSyncedAt(new Date());
       setLastDurationMs(Date.now() - startedAt);
       setRoute(getLastRoute());
+      setRelayProblem(getRelayProblem());
       failedRefreshes.current = 0;
       if (retryTimer.current) clearTimeout(retryTimer.current);
       setSyncError('');
@@ -256,6 +258,7 @@ export default function App() {
           setLastSyncedAt(new Date());
           failedRefreshes.current = 0;
           setRoute(getLastRoute());
+          setRelayProblem(getRelayProblem());
           setSyncError('');
           setSyncState('ok');
         } else if (!serverList) {
@@ -407,6 +410,7 @@ export default function App() {
           lastSyncedAt={lastSyncedAt}
           lastDurationMs={lastDurationMs}
           route={route}
+          relayProblem={relayProblem}
           errorMessage={syncError}
           onRefresh={() => refresh(true)}
         />

@@ -30,6 +30,20 @@ let lastRoute: Route | null = null;
 /** Which way the latest successful request travelled (shown next to the sync time) */
 export const getLastRoute = (): Route | null => lastRoute;
 
+// Why the relay was skipped the last time it failed (null while it works), shown in the sync bar
+let relayProblem: string | null = null;
+export const getRelayProblem = (): string | null => relayProblem;
+
+/** A short, plain reason a relay request failed, to help find out what is wrong on one device */
+export function describeRelayProblem(err: ApiError): string {
+  if (err.timedOut) return 'ตัวกลางตอบช้าเกินกำหนด';
+  if (err.code === 'network') {
+    // A blocked connection and a refusal by the relay (page address not allowed) look the same to the browser
+    return 'ติดต่อตัวกลางไม่ได้ (อาจถูกเครือข่ายหรือส่วนขยายเบราว์เซอร์บล็อกโดเมน workers.dev หรือที่อยู่เว็บไม่อยู่ในรายการที่ตัวกลางอนุญาต)';
+  }
+  return `ตัวกลางตอบผิดปกติ (${err.message})`;
+}
+
 export type ApiErrorCode =
   | 'unauthorized'
   | 'invalid_password'
@@ -154,10 +168,13 @@ async function send(
   try {
     const res = await request(build(proxy), init, PROXY_TIMEOUT_MS);
     lastRoute = 'relay';
+    relayProblem = null;
     return res;
   } catch (err) {
     if (!(isApiError(err) && err.transport)) throw err;
     proxyDownUntil = Date.now() + PROXY_COOLDOWN_MS;
+    relayProblem = describeRelayProblem(err);
+    console.warn('Relay failed, using the direct route:', err);
     if (!fallback) throw err;
     const res = await request(build(direct), init);
     lastRoute = 'direct';
