@@ -50,7 +50,11 @@ async function request(url: string, init?: RequestInit): Promise<ApiResponse> {
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     const res = await fetch(url, { ...init, signal: controller.signal });
-    if (!res.ok) throw new ApiError('server_error', `เซิร์ฟเวอร์ตอบกลับผิดพลาด (HTTP ${res.status})`);
+    if (!res.ok) {
+      // Apps Script answers an anonymous caller with 404 when the deployment is not open to "Anyone"
+      const hint = res.status === 404 ? ' ตรวจสอบว่า deploy สคริปต์ให้ "ผู้มีสิทธิ์เข้าถึง" เป็น "ทุกคน (Anyone)" และ URL ถูกต้อง' : '';
+      throw new ApiError('server_error', `เซิร์ฟเวอร์ตอบกลับผิดพลาด (HTTP ${res.status}).${hint}`);
+    }
     let json: ApiResponse;
     try {
       json = (await res.json()) as ApiResponse;
