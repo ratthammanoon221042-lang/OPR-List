@@ -44,7 +44,8 @@ export function normalizePermit(raw: RawPermit): ParkingPermit {
   let endDate = parseFlexibleDate(raw.endDate) || startDate;
   if (endDate < startDate) endDate = startDate;
 
-  const createdAtText = text(raw.createdAt);
+  // Rows written by an older script carry a Buddhist-era year (2569-10-08T...): convert it back
+  const createdAtText = text(raw.createdAt).replace(/^(\d{4})(?=-)/, (y) => (Number(y) > 2400 ? String(Number(y) - 543) : y));
   const createdAt = createdAtText && !Number.isNaN(Date.parse(createdAtText))
     ? createdAtText
     : new Date().toISOString();

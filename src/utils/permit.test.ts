@@ -60,6 +60,11 @@ describe('normalizePermit', () => {
     expect(p.subDepartment).toBe('กองกลาง');
   });
 
+  it('converts a Buddhist-era year in createdAt back to the Gregorian year', () => {
+    expect(normalizePermit({ ...base, createdAt: '2569-10-08T10:53:31.000Z' }).createdAt).toBe('2026-10-08T10:53:31.000Z');
+    expect(normalizePermit({ ...base, createdAt: '2026-10-08T10:53:31.000Z' }).createdAt).toBe('2026-10-08T10:53:31.000Z');
+  });
+
   it('replaces an unparseable createdAt', () => {
     const p = normalizePermit({ ...base, createdAt: '8/10/2569 14:00:00' });
     expect(Number.isNaN(Date.parse(p.createdAt))).toBe(false);
