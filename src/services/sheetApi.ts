@@ -15,7 +15,7 @@ const DEFAULT_APPS_SCRIPT_URL =
  * Optional relay (cloudflare-worker/): the browser talks to Cloudflare, and Cloudflare talks to Google.
  * Leave empty to call the script directly. If the relay fails, the app falls back to the script itself.
  */
-const DEFAULT_PROXY_URL = '';
+const DEFAULT_PROXY_URL = 'https://opr-list-relay.ratthammanoon-221042.workers.dev/';
 
 // Apps Script can need a while to wake up after being idle
 const REQUEST_TIMEOUT_MS = 45_000;
@@ -74,8 +74,10 @@ export function getAppsScriptUrl(): string {
   return (import.meta.env.VITE_APPS_SCRIPT_URL as string | undefined)?.trim() || DEFAULT_APPS_SCRIPT_URL;
 }
 
+/** VITE_PROXY_URL overrides the relay; set it to an empty value to switch the relay off */
 export function getProxyUrl(): string {
-  return (import.meta.env.VITE_PROXY_URL as string | undefined)?.trim() || DEFAULT_PROXY_URL;
+  const fromEnv = import.meta.env.VITE_PROXY_URL as string | undefined;
+  return fromEnv !== undefined ? fromEnv.trim() : DEFAULT_PROXY_URL;
 }
 
 interface ApiResponse {

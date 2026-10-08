@@ -21,6 +21,8 @@ const permit: ParkingPermit = {
 };
 
 beforeEach(() => {
+  // These tests are about the script calls themselves: keep the relay out of the way
+  vi.stubEnv('VITE_PROXY_URL', '');
   store.clear();
   vi.stubGlobal('localStorage', {
     getItem: (k: string) => store.get(k) ?? null,
@@ -28,7 +30,10 @@ beforeEach(() => {
     removeItem: (k: string) => void store.delete(k),
   });
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+});
 
 const messageOf = async (p: Promise<unknown>) => {
   try {
