@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  calculateNights, dateRangesOverlap, formatThaiDate, getDailySummaries, getDaysInMonth,
+  calculateNights, dateRangesOverlap, formatThaiDate, formatThaiDateTime, getDailySummaries, getDaysInMonth,
   isIsoDate, isPermitActiveOnDate, parseFlexibleDate,
 } from './dateUtils';
 import { ParkingPermit } from '../types/parking';
@@ -117,5 +117,12 @@ describe('calendar helpers', () => {
       [2, 1, 1],
       [0, 0, 0],
     ]);
+  });
+});
+
+describe('formatThaiDateTime', () => {
+  it('writes the Buddhist year and a 24-hour time', () => {
+    expect(formatThaiDateTime(new Date(2026, 9, 8, 14, 5))).toBe('8 ต.ค. 2569 14:05 น.');
+    expect(formatThaiDateTime(new Date(2026, 0, 1, 0, 0))).toBe('1 ม.ค. 2569 00:00 น.');
   });
 });

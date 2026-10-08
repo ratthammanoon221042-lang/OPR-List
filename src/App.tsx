@@ -5,7 +5,9 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ParkingPermit } from './types/parking';
-import { loadCachedPermits, saveCachedPermits, getAuthToken, setAuthToken } from './utils/storage';
+import {
+  loadCachedPermits, saveCachedPermits, getAuthToken, setAuthToken, loadLastSynced, saveLastSynced,
+} from './utils/storage';
 import {
   fetchPermits, addPermit, updatePermit, deletePermit, isApiError,
 } from './services/sheetApi';
@@ -36,7 +38,12 @@ export default function App() {
 
   const [syncState, setSyncState] = useState<SyncState>('syncing');
   const [syncError, setSyncError] = useState('');
-  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
+  // When the sheet last confirmed this list (kept across visits, shown on reports)
+  const [lastSyncedAt, setLastSyncedAtState] = useState<Date | null>(() => loadLastSynced());
+  const setLastSyncedAt = useCallback((date: Date) => {
+    saveLastSynced(date);
+    setLastSyncedAtState(date);
+  }, []);
 
   // Modals
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
@@ -102,7 +109,7 @@ export default function App() {
       setSyncError(err instanceof Error ? err.message : 'ไม่ทราบสาเหตุ');
       setSyncState('error');
     }
-  }, []);
+  }, [setLastSyncedAt]);
 
   useEffect(() => {
     // refresh() only sets state after the network request resolves
@@ -155,7 +162,15 @@ export default function App() {
     const run = writeQueue.current.then(async () => {
       let serverList: ParkingPermit[] | null = null;
       try {
-        serverList = await opts.call(token);
+        // A timeout or dropped connection does not tell whether the sheet got the request.
+        // Adding / editing / deleting by id is safe to repeat, so try once more.
+        try {
+          serverList = await opts.call(token);
+        } catch (firstError) {
+          if (!(isApiError(firstError) && firstError.code === 'network')) throw firstError;
+          showToast('Google Sheet ตอบช้า กำลังลองส่งซ้ำ...', 'info');
+          serverList = await opts.call(token);
+        }
         showToast(`${opts.success} และบันทึกลง Google Sheet แล้ว`, 'success');
       } catch (err) {
         setPermits(opts.revert);
@@ -293,6 +308,7 @@ export default function App() {
           onDeletePermit={handleDeletePermitClick}
           onEditPermit={handleEditPermit}
           onPrint={requestPrint}
+          dataAsOf={lastSyncedAt}
           isAuthenticated={canEdit}
         />
       </main>
@@ -333,6 +349,7 @@ export default function App() {
         permits={permits}
         initialDate={selectedDate}
         onPrint={requestPrint}
+        dataAsOf={lastSyncedAt}
       />
 
       <ChangePasswordModal
@@ -376,7 +393,7 @@ export default function App() {
       )}
 
       {/* Direct child of #app-root: the only element visible when printing */}
-      <PrintReport permits={permits} date={printRequest?.date ?? selectedDate} />
+      <PrintReport permits={permits} date={printRequest?.date ?? selectedDate} dataAsOf={lastSyncedAt} />
     </div>
   );
 }

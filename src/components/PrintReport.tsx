@@ -1,17 +1,19 @@
 import React from 'react';
 import { ParkingPermit } from '../types/parking';
-import { formatThaiDate, isPermitActiveOnDate } from '../utils/dateUtils';
+import { formatThaiDate, formatThaiDateTime, isPermitActiveOnDate } from '../utils/dateUtils';
 
 interface PrintReportProps {
   permits: ParkingPermit[];
   date: string;
+  /** When the sheet last confirmed this list; printed so the guard knows how fresh it is */
+  dataAsOf?: Date | null;
 }
 
 /**
  * The only thing that is printed with window.print(): hidden on screen, shown in print.
  * The table header repeats on every printed page and rows never split across pages.
  */
-export const PrintReport: React.FC<PrintReportProps> = ({ permits, date }) => {
+export const PrintReport: React.FC<PrintReportProps> = ({ permits, date, dataAsOf }) => {
   const active = permits.filter((p) => isPermitActiveOnDate(p, date));
   const b1 = active.filter((p) => p.parkingFloor === 'B1').length;
   const b2 = active.length - b1;
@@ -60,6 +62,7 @@ export const PrintReport: React.FC<PrintReportProps> = ({ permits, date }) => {
       )}
       <p className="text-center text-[11px] text-slate-500 mt-4">
         เอกสารสำหรับเจ้าหน้าที่ รปภ. ตรวจสอบยานพาหนะเข้าจอดค้างคืน
+        {dataAsOf ? ` · ข้อมูลจาก Google Sheet ณ ${formatThaiDateTime(dataAsOf)}` : ''}
       </p>
     </section>
   );

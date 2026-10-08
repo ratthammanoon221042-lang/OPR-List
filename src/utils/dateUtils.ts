@@ -167,3 +167,12 @@ export function getDailySummaries(permits: ParkingPermit[], dates: string[]): Da
     };
   });
 }
+
+/**
+ * "8 ต.ค. 2569 14:05 น." for a moment in time (local time, Buddhist year)
+ */
+export function formatThaiDateTime(date: Date): string {
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mm = String(date.getMinutes()).padStart(2, '0');
+  return `${date.getDate()} ${THAI_MONTHS_SHORT[date.getMonth()]} ${date.getFullYear() + 543} ${hh}:${mm} น.`;
+}

@@ -9,6 +9,7 @@ interface OvernightParkingDashboardProps {
   onDeletePermit?: (permit: ParkingPermit) => void;
   onEditPermit?: (permit: ParkingPermit) => void;
   onPrint?: (date: string) => void;
+  dataAsOf?: Date | null;
   isAuthenticated: boolean;
   selectedDate: string;
   onSelectDate: (date: string) => void;
@@ -19,6 +20,7 @@ export const OvernightParkingDashboard: React.FC<OvernightParkingDashboardProps>
   onDeletePermit,
   onEditPermit,
   onPrint,
+  dataAsOf,
   isAuthenticated,
   selectedDate,
   onSelectDate,
@@ -160,7 +162,7 @@ export const OvernightParkingDashboard: React.FC<OvernightParkingDashboardProps>
   const handleDownloadPDF = async () => {
     setIsExporting(true);
     try {
-      await downloadParkingReportPdf(currentDayStat.permits, selectedDate);
+      await downloadParkingReportPdf(currentDayStat.permits, selectedDate, dataAsOf);
     } catch (err) {
       console.error('PDF export error:', err);
       window.alert('สร้างไฟล์ PDF ไม่สำเร็จ ลองใช้ปุ่มพิมพ์แล้วเลือก "บันทึกเป็น PDF" แทน');

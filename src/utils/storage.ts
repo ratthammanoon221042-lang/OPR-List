@@ -43,3 +43,23 @@ export function setAuthToken(token: string | null): void {
     console.error('Failed to store auth token', e);
   }
 }
+
+const LAST_SYNCED_KEY = 'thai_overnight_last_synced_v1';
+
+export function loadLastSynced(): Date | null {
+  try {
+    const raw = localStorage.getItem(LAST_SYNCED_KEY);
+    const date = raw ? new Date(raw) : null;
+    return date && !Number.isNaN(date.getTime()) ? date : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveLastSynced(date: Date): void {
+  try {
+    localStorage.setItem(LAST_SYNCED_KEY, date.toISOString());
+  } catch {
+    // not critical
+  }
+}

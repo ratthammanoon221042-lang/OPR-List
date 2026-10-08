@@ -10,7 +10,8 @@ import { normalizePermit } from '../utils/permit';
 const DEFAULT_APPS_SCRIPT_URL =
   'https://script.google.com/macros/s/AKfycbwvZxrFsXHIp63NvyMDQi-QgmPxJ2deHpxWjpMhEQlKBiyNFiMjJrBHMWOpC0gxgINAqQ/exec';
 
-const REQUEST_TIMEOUT_MS = 25_000;
+// Apps Script can need a while to wake up after being idle
+const REQUEST_TIMEOUT_MS = 45_000;
 
 export type ApiErrorCode =
   | 'unauthorized'
@@ -102,7 +103,14 @@ function toPermits(json: ApiResponse): ParkingPermit[] {
 export async function fetchPermits(): Promise<ParkingPermit[]> {
   const url = requireUrl();
   const sep = url.includes('?') ? '&' : '?';
-  return toPermits(await request(`${url}${sep}action=list`));
+  const get = () => request(`${url}${sep}action=list`);
+  try {
+    return toPermits(await get());
+  } catch (err) {
+    // A first request often only wakes the script up: try once more on timeouts / dropped connections
+    if (isApiError(err) && err.code === 'network') return toPermits(await get());
+    throw err;
+  }
 }
 
 export async function login(password: string): Promise<{ token: string; mustChange: boolean }> {

@@ -1,0 +1,27 @@
+name: Keep Apps Script warm
+
+# Apps Script is slow on the first request after it has been idle. A light request every
+# 10 minutes during working hours (07:00-17:59 Thai time, Mon-Fri) keeps it ready.
+# Scheduled workflows only run from the default branch.
+on:
+  schedule:
+    - cron: '*/10 0-10 * * 1-5'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: src/services/sheetApi.ts
+          sparse-checkout-cone-mode: false
+      - name: Request the list once
+        run: |
+          url=$(grep -o "https://script.google.com/macros/s/[A-Za-z0-9_-]*/exec" src/services/sheetApi.ts | head -1)
+          echo "Pinging the Apps Script deployment"
+          # Never fail the job: a slow or failed ping only means the next real request is slower
+          curl -sS -L --max-time 60 -o /dev/null -w "HTTP %{http_code} in %{time_total}s\n" "$url?action=list" || true

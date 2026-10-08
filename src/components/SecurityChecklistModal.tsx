@@ -11,6 +11,7 @@ interface SecurityChecklistModalProps {
   permits: ParkingPermit[];
   initialDate?: string;
   onPrint: (date: string) => void;
+  dataAsOf?: Date | null;
 }
 
 export const SecurityChecklistModal: React.FC<SecurityChecklistModalProps> = ({ isOpen, ...rest }) => {
@@ -23,6 +24,7 @@ const SecurityChecklist: React.FC<Omit<SecurityChecklistModalProps, 'isOpen'>> =
   permits,
   initialDate,
   onPrint,
+  dataAsOf,
 }) => {
   const [targetDate, setTargetDate] = useState(() => initialDate || getTodayDateString());
   const [isExporting, setIsExporting] = useState(false);
@@ -36,7 +38,7 @@ const SecurityChecklist: React.FC<Omit<SecurityChecklistModalProps, 'isOpen'>> =
   const handleDownloadPDF = async () => {
     setIsExporting(true);
     try {
-      await downloadParkingReportPdf(activePermits, targetDate);
+      await downloadParkingReportPdf(activePermits, targetDate, dataAsOf);
     } catch (err) {
       console.error('Failed to generate PDF', err);
       window.alert('สร้างไฟล์ PDF ไม่สำเร็จ ลองใช้ปุ่มพิมพ์แล้วเลือก "บันทึกเป็น PDF" แทน');

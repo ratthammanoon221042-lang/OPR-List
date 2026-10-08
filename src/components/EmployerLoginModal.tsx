@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, Lock, Key, AlertCircle, LogIn, Eye, EyeOff, Loader2, ShieldAlert } from 'lucide-react';
 import { login, isApiError } from '../services/sheetApi';
 import { ChangePasswordForm } from './ChangePasswordForm';
@@ -15,8 +15,16 @@ export const EmployerLoginModal: React.FC<EmployerLoginModalProps> = ({ isOpen, 
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [busy, setBusy] = useState(false);
+  // After a few seconds tell the user it is the sheet's backend waking up, not a freeze
+  const [slow, setSlow] = useState(false);
   // Set when the server says the default password is still in use: the user must pick a new one
   const [forceChange, setForceChange] = useState<{ token: string; oldPassword: string } | null>(null);
+
+  useEffect(() => {
+    if (!busy) return;
+    const timer = setTimeout(() => setSlow(true), 4000);
+    return () => clearTimeout(timer);
+  }, [busy]);
 
   if (!isOpen) return null;
 
@@ -35,6 +43,7 @@ export const EmployerLoginModal: React.FC<EmployerLoginModalProps> = ({ isOpen, 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
+    setSlow(false);
     setBusy(true);
     try {
       const { token, mustChange } = await login(password);
@@ -136,6 +145,11 @@ export const EmployerLoginModal: React.FC<EmployerLoginModalProps> = ({ isOpen, 
                 {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4" />}
                 <span>{busy ? 'กำลังตรวจสอบ...' : 'เข้าสู่ระบบ'}</span>
               </button>
+              {busy && slow && (
+                <p className="text-[11px] text-slate-500 text-center">
+                  Google Sheet กำลังเริ่มทำงาน ครั้งแรกอาจใช้เวลาสักครู่ กรุณารอ
+                </p>
+              )}
             </form>
           )}
         </div>

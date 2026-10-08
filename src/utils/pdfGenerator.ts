@@ -1,5 +1,5 @@
 import { ParkingPermit } from '../types/parking';
-import { formatThaiDate } from './dateUtils';
+import { formatThaiDate, formatThaiDateTime } from './dateUtils';
 
 /**
  * Client-side PDF generator for the overnight parking report.
@@ -74,7 +74,7 @@ function drawPage(
   firstIndex: number,
   pageNo: number,
   pageCount: number,
-  summary: { total: number; b1: number; b2: number; dateText: string }
+  summary: { total: number; b1: number; b2: number; dateText: string; asOfText: string }
 ): void {
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, PAGE_W, PAGE_H);
@@ -217,7 +217,7 @@ function drawPage(
   ctx.font = `14px ${FONT}`;
   ctx.textAlign = 'center';
   ctx.fillText(
-    'เอกสารสำหรับเจ้าหน้าที่ รปภ. ตรวจสอบยานพาหนะเข้าจอดค้างคืน · สร้างอัตโนมัติจากระบบ',
+    `เอกสารสำหรับเจ้าหน้าที่ รปภ. ตรวจสอบยานพาหนะเข้าจอดค้างคืน${summary.asOfText}`,
     PAGE_W / 2,
     FOOTER_Y
   );
@@ -227,7 +227,8 @@ function drawPage(
 
 export async function downloadParkingReportPdf(
   permits: ParkingPermit[],
-  targetDate: string
+  targetDate: string,
+  dataAsOf?: Date | null
 ): Promise<void> {
   await ensureFontsLoaded();
   const { jsPDF } = await import('jspdf');
@@ -238,6 +239,7 @@ export async function downloadParkingReportPdf(
     b1: permits.filter((p) => p.parkingFloor === 'B1').length,
     b2: permits.filter((p) => p.parkingFloor === 'B2').length,
     dateText: formatThaiDate(targetDate, 'long'),
+    asOfText: dataAsOf ? ` · ข้อมูล ณ ${formatThaiDateTime(dataAsOf)}` : '',
   };
 
   const canvas = document.createElement('canvas');
