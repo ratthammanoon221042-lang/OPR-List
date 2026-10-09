@@ -37,13 +37,13 @@ export const SyncStatusBar: React.FC<SyncStatusBarProps> = ({
 
   let message: string;
   if (isError) {
-    message = `ซิงค์กับ Google Sheet ไม่สำเร็จ: ${errorMessage} (กำลังแสดงข้อมูลที่เครื่องจำไว้${time ? ` ซึ่งอัปเดตล่าสุด ${time} น.` : ''})`;
+    message = `ซิงค์ข้อมูลไม่สำเร็จ: ${errorMessage} (กำลังแสดงข้อมูลที่เครื่องจำไว้${time ? ` ซึ่งอัปเดตล่าสุด ${time} น.` : ''})`;
   } else if (isStale) {
-    message = `Google Sheet ตอบช้าหรือไม่ตอบ (${errorMessage}) กำลังใช้ข้อมูลที่เครื่องจำไว้${time ? ` ซึ่งอัปเดตล่าสุด ${time} น.` : ''} และกำลังลองใหม่อัตโนมัติ`;
+    message = `เซิร์ฟเวอร์ตอบช้าหรือไม่ตอบ (${errorMessage}) กำลังใช้ข้อมูลที่เครื่องจำไว้${time ? ` ซึ่งอัปเดตล่าสุด ${time} น.` : ''} และกำลังลองใหม่อัตโนมัติ`;
   } else if (state === 'syncing') {
-    message = 'กำลังซิงค์กับ Google Sheet...';
+    message = 'กำลังซิงค์ข้อมูล...';
   } else {
-    message = `เชื่อมต่อ Google Sheet แล้ว${time ? ` · อัปเดตล่าสุด ${time} น.` : ''}${speed}${relayNote}`;
+    message = `เชื่อมต่อแล้ว${time ? ` · อัปเดตล่าสุด ${time} น.` : ''}${speed}${relayNote}`;
   }
 
   return (
