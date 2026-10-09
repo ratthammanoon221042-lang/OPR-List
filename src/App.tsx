@@ -554,7 +554,7 @@ export default function App() {
         message="คุณต้องการลบข้อมูลการขออนุญาตจอดรถค้างคืนรายการนี้ใช่หรือไม่? ข้อมูลนี้จะถูกนำออกจากระบบทันที"
         itemDetails={permitToDelete ? [
           { label: 'หมายเลขทะเบียน', value: `${permitToDelete.licensePlate} (${permitToDelete.province || 'กรุงเทพมหานคร'})` },
-          { label: 'ยี่ห้อ / สี', value: `${permitToDelete.vehicleBrand}${permitToDelete.vehicleColor ? ` สี${permitToDelete.vehicleColor}` : ''}` },
+          { label: 'ยี่ห้อ / สี', value: `${permitToDelete.vehicleBrand || '-'}${permitToDelete.vehicleColor ? ` สี${permitToDelete.vehicleColor}` : ''}` },
           { label: 'ชั้นที่ขอจอด', value: `ชั้น ${permitToDelete.parkingFloor}` },
           { label: 'ช่วงวันที่ขอจอด', value: `${formatThaiDate(permitToDelete.startDate, 'short')} - ${formatThaiDate(permitToDelete.endDate, 'short')}` },
         ] : []}

@@ -40,10 +40,11 @@ describe('rows', () => {
 
   it('lists what is missing in a started row', () => {
     const r = newRow({ plate: '1กก1234' });
-    expect(missingFields(r)).toEqual(['brand', 'province']); // the colour is optional
+    expect(missingFields(r)).toEqual(['province']); // the brand and the colour are optional
     expect(isRowComplete(r)).toBe(false);
     expect(isRowComplete(car())).toBe(true);
     expect(isRowComplete(car({ color: '' }))).toBe(true);
+    expect(isRowComplete(car({ brand: '', color: '' }))).toBe(true);
     expect(missingFields(newRow({ plate: '   ' }))).toContain('plate');
   });
 });
@@ -262,7 +263,7 @@ describe('draftFromExtraction', () => {
     expect(draft.common).toMatchObject({ startDate: '2026-09-30', endDate: '2026-09-30' });
     expect(draft.rows[0]).toMatchObject({ startDate: '2026-09-30', endDate: '2026-10-02' });
     expect(draft.rows[0].flags).toEqual(expect.arrayContaining(['brand', 'color']));
-    expect(isRowComplete(draft.rows[0])).toBe(false); // brand and colour still to fill in
+    expect(isRowComplete(draft.rows[0])).toBe(true); // brand and colour are optional: the letter gives only a plate and a province
     expect(draft.common.department).toBe('กองการสื่อสารโทรคมนาคม');
   });
 });

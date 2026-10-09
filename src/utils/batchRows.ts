@@ -52,10 +52,9 @@ export const isRowEmpty = (r: DraftRow): boolean => !r.brand.trim() && !r.color.
 /** The province as the list spells it ("กทม." and "จ.นนทบุรี" are understood), or '' when it is not a province */
 export const rowProvince = (r: DraftRow): string => normalizeProvince(r.province);
 
-/** Brand, plate and a province from the list are needed (the colour is optional); typed text that is no province counts as missing */
-export const missingFields = (r: DraftRow): Array<'brand' | 'plate' | 'province'> => {
-  const missing: Array<'brand' | 'plate' | 'province'> = [];
-  if (!r.brand.trim()) missing.push('brand');
+/** A plate and a province from the list are needed (brand and colour are optional); typed text that is no province counts as missing */
+export const missingFields = (r: DraftRow): Array<'plate' | 'province'> => {
+  const missing: Array<'plate' | 'province'> = [];
   if (!cleanPlate(r.plate)) missing.push('plate');
   if (!rowProvince(r)) missing.push('province');
   return missing;

@@ -235,6 +235,14 @@ describe('Code.gs', () => {
   });
 
   describe('data', () => {
+    it('the brand is optional too: stored as "-" and read back as empty', () => {
+      expect(t.post({ action: 'add', token, permit: permit({ id: 'PK-NB', vehicleBrand: '' }) }).status).toBe('success');
+      expect(t.post({ action: 'add', token, permit: permit({ id: 'PK-NB2', vehicleBrand: '-' }) }).status).toBe('success');
+      expect(t.list().data.map((r: { vehicleBrand: string }) => r.vehicleBrand)).toEqual(['', '']);
+      const [sheet] = [...t.sheets.values()];
+      expect(sheet.data[1][4]).toBe('-');
+    });
+
     it('the colour is optional: stored as "-" and read back as empty', () => {
       expect(t.post({ action: 'add', token, permit: permit({ id: 'PK-NC', vehicleColor: '' }) }).status).toBe('success');
       expect(t.post({ action: 'add', token, permit: permit({ id: 'PK-DASH', vehicleColor: '-' }) }).status).toBe('success');
@@ -402,7 +410,6 @@ describe('Code.gs', () => {
       ['bad date format', { startDate: '06/10/2026' }],
       ['unknown floor', { parkingFloor: 'B3' }],
       ['blank plate', { licensePlate: '   ' }],
-      ['missing brand', { vehicleBrand: '' }],
     ])('rejects invalid data: %s', (_name, over) => {
       expect(t.post({ action: 'add', token, permit: permit(over) })).toMatchObject({ status: 'error', code: 'bad_request' });
       expect(t.list().data).toEqual([]);

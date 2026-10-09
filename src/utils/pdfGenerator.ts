@@ -161,7 +161,7 @@ function drawPage(
       const textY = y + 29;
       const cells: { text: string; align: CanvasTextAlign; font: string; color: string }[] = [
         { text: String(firstIndex + i + 1), align: 'center', font: `15px ${FONT}`, color: '#0f172a' },
-        { text: permit.vehicleBrand, align: 'left', font: `500 15px ${FONT}`, color: '#0f172a' },
+        { text: permit.vehicleBrand || '-', align: 'left', font: `500 15px ${FONT}`, color: '#0f172a' },
         { text: permit.vehicleColor || '-', align: 'left', font: `15px ${FONT}`, color: '#334155' },
         {
           text: permit.department

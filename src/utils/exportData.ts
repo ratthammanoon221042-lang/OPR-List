@@ -16,7 +16,7 @@ export const EXPORT_HEADERS = [
 export function permitToExportRow(permit: ParkingPermit, index: number): (string | number)[] {
   return [
     index + 1,
-    permit.vehicleBrand,
+    permit.vehicleBrand || '-',
     permit.vehicleColor || '-',
     permit.department || '-',
     permit.subDepartment || '-',

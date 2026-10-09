@@ -438,7 +438,7 @@ export const OvernightParkingDashboard: React.FC<OvernightParkingDashboardProps>
 
                       {/* 2. ยี่ห้อ (REQUIREMENT 2: ยี่ห้อขึ้นก่อน) */}
                       <td className="py-3.5 px-3 font-semibold text-slate-800">
-                        {permit.vehicleBrand}
+                        {permit.vehicleBrand || '-'}
                       </td>
 
                       {/* 3. สี */}
@@ -560,7 +560,7 @@ export const OvernightParkingDashboard: React.FC<OvernightParkingDashboardProps>
                       </span>
                       {/* 1. ยี่ห้อ & 2. สี */}
                       <span className="font-bold text-slate-900 text-base">
-                        {permit.vehicleBrand}
+                        {permit.vehicleBrand || 'ไม่ระบุยี่ห้อ'}
                       </span>
                       {permit.vehicleColor && (
                         <>

@@ -383,7 +383,6 @@ function validatePermit_(raw) {
   if (!p.id) return { error: 'ไม่มีรหัสอ้างอิง' };
   if (!p.licensePlate) return { error: 'กรุณาระบุหมายเลขทะเบียน' };
   if (!p.parkingFloor) return { error: 'ชั้นที่ขอจอดต้องเป็น B1 หรือ B2' };
-  if (!p.vehicleBrand) return { error: 'กรุณาระบุยี่ห้อรถ' };
   if (!isIsoDate_(p.startDate) || !isIsoDate_(p.endDate)) return { error: 'รูปแบบวันที่ต้องเป็น YYYY-MM-DD' };
   if (p.endDate < p.startDate) return { error: 'วันที่สิ้นสุดต้องไม่น้อยกว่าวันที่เริ่มจอด' };
   return { value: p };
@@ -452,7 +451,7 @@ function writeRow_(sheet, rowNumber, p) {
     p.licensePlate,
     p.province,
     p.parkingFloor,
-    p.vehicleBrand,
+    p.vehicleBrand || '-',
     p.vehicleColor || '-',
     p.department || '-',
     p.subDepartment || '-',
@@ -531,7 +530,7 @@ function readAllPermits_(sheet) {
       licensePlate: String(row[1] || '').replace(/\s+/g, ''),
       province: String(row[2] || 'กรุงเทพมหานคร'),
       parkingFloor: String(row[3]).indexOf('2') !== -1 ? 'B2' : 'B1',
-      vehicleBrand: String(row[4] || ''),
+      vehicleBrand: row[4] && row[4] !== '-' ? String(row[4]) : '',
       vehicleColor: row[5] && row[5] !== '-' ? String(row[5]) : '',
       department: row[6] && row[6] !== '-' ? String(row[6]) : '',
       subDepartment: row[7] && row[7] !== '-' ? String(row[7]) : '',

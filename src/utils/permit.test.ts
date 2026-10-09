@@ -124,3 +124,12 @@ describe('optional colour', () => {
     expect(normalizePermit({ ...base, vehicleColor: 'แดง' }).vehicleColor).toBe('แดง');
   });
 });
+
+describe('optional brand', () => {
+  it("'-' from the sheet and a blank brand both mean no brand", () => {
+    expect(normalizePermit({ ...base, vehicleBrand: '-' }).vehicleBrand).toBe('');
+    expect(normalizePermit({ ...base, vehicleBrand: '' }).vehicleBrand).toBe('');
+    expect(normalizePermit({ ...base, vehicleBrand: 'Honda' }).vehicleBrand).toBe('Honda');
+  });
+});
+
