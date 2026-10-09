@@ -1,11 +1,12 @@
 import React from 'react';
-import { Plus, FileText, Car, LogIn, LogOut, CheckCircle2, KeyRound } from 'lucide-react';
+import { Plus, Camera, FileText, Car, LogIn, LogOut, CheckCircle2, KeyRound } from 'lucide-react';
 
 interface HeaderProps {
   isAuthenticated: boolean;
   onOpenChangePassword: () => void;
   onOpenLogin: () => void;
   onOpenNewRequest: () => void;
+  onOpenImport: () => void;
   onLogout: () => void;
   onOpenPrintModal: () => void;
 }
@@ -15,6 +16,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenChangePassword,
   onOpenLogin,
   onOpenNewRequest,
+  onOpenImport,
   onLogout,
   onOpenPrintModal,
 }) => {
@@ -84,6 +86,16 @@ export const Header: React.FC<HeaderProps> = ({
                 >
                   <Plus className="w-5 h-5" />
                   <span>เพิ่มรายการขออนุญาต</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={onOpenImport}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 border border-slate-700 text-sm sm:text-base font-medium rounded-xl transition-colors cursor-pointer"
+                  title="อ่านรถยนต์จากภาพหรือไฟล์หนังสือ แล้วกรอกให้หลายคันพร้อมกัน"
+                >
+                  <Camera className="w-5 h-5 text-blue-400" />
+                  <span>กรอกจากรูป</span>
                 </button>
 
                 <button

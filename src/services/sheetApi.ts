@@ -1,4 +1,5 @@
 import { ParkingPermit } from '../types/parking';
+import type { ExtractedDocument } from '../utils/batchRows';
 import { normalizePermit } from '../utils/permit';
 import { loadLastSynced } from '../utils/storage';
 
@@ -51,6 +52,8 @@ export type ApiErrorCode =
   | 'locked'
   | 'bad_request'
   | 'not_found'
+  | 'not_configured'
+  | 'rate_limited'
   | 'server_error'
   | 'network';
 
@@ -238,3 +241,74 @@ export const updatePermit = async (token: string, permit: ParkingPermit) =>
 
 export const deletePermit = async (token: string, id: string) =>
   toPermits(await post({ action: 'delete', token, id }));
+
+/** Several permits at once. The script skips ids it already has, so sending the same batch twice is safe. */
+export const importPermits = async (token: string, permits: ParkingPermit[]) =>
+  toPermits(await post({ action: 'import', token, permits }));
+
+// ---------------------------------------------------------------
+// Reading permits from photos / documents (cloudflare-worker, Gemini)
+// ---------------------------------------------------------------
+
+export interface ExtractFile {
+  name: string;
+  mimeType: string;
+  /** base64, without the "data:...;base64," prefix */
+  data: string;
+}
+
+// Reading a few pages can take a while, the relay itself gives up after ~50 s
+const EXTRACT_TIMEOUT_MS = 70_000;
+
+/**
+ * Asks the relay to read the documents. Only the relay can do this (it holds the AI key), so there is
+ * no direct fallback; the relay also checks the login token with the script first.
+ */
+export async function extractDocument(token: string, files: ExtractFile[], today: string): Promise<ExtractedDocument> {
+  const proxy = getProxyUrl();
+  if (!proxy) {
+    throw new ApiError('bad_request', 'ฟีเจอร์กรอกจากรูปต้องใช้ตัวกลาง Cloudflare แต่ตัวกลางถูกปิดอยู่ในเว็บนี้');
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), EXTRACT_TIMEOUT_MS);
+  try {
+    const res = await fetch(proxy, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        action: 'extract',
+        token,
+        today,
+        files: files.map(({ mimeType, data }) => ({ mimeType, data })),
+      }),
+      signal: controller.signal,
+    });
+
+    let json: ApiResponse | null = null;
+    try {
+      json = (await res.json()) as ApiResponse;
+    } catch {
+      // handled below
+    }
+    if (!json) {
+      throw new ApiError('server_error', `ระบบอ่านเอกสารตอบกลับผิดปกติ (HTTP ${res.status})`, false, true);
+    }
+    if (json.status !== 'success') {
+      throw new ApiError(json.code ?? 'server_error', json.message ?? 'อ่านเอกสารไม่สำเร็จ');
+    }
+    const data = json.data as ExtractedDocument | undefined;
+    if (!data || !Array.isArray(data.vehicles)) {
+      throw new ApiError('server_error', 'ระบบอ่านเอกสารตอบกลับรูปแบบที่ไม่ถูกต้อง ลองอีกครั้ง');
+    }
+    return data;
+  } catch (e) {
+    if (isApiError(e)) throw e;
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      throw new ApiError('network', 'ระบบอ่านเอกสารตอบช้าเกินกำหนด ลองใหม่อีกครั้ง หรือลดจำนวนไฟล์', true);
+    }
+    throw new ApiError('network', 'ติดต่อระบบอ่านเอกสารไม่ได้ ตรวจสอบอินเทอร์เน็ต');
+  } finally {
+    clearTimeout(timer);
+  }
+}

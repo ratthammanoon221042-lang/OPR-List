@@ -9,11 +9,12 @@ import {
   loadCachedPermits, saveCachedPermits, getAuthToken, setAuthToken, loadLastSynced, saveLastSynced,
 } from './utils/storage';
 import {
-  fetchPermits, addPermit, updatePermit, deletePermit, isApiError, isOutcomeUnknown, getLastRoute, getRelayProblem,
+  fetchPermits, addPermit, updatePermit, deletePermit, importPermits, isApiError, isOutcomeUnknown, getLastRoute, getRelayProblem,
 } from './services/sheetApi';
 import { Header } from './components/Header';
 import { OvernightParkingDashboard } from './components/OvernightParkingDashboard';
 import { RequestFormModal } from './components/RequestFormModal';
+import { ImportFromImageModal } from './components/ImportFromImageModal';
 import { SecurityChecklistModal } from './components/SecurityChecklistModal';
 import { EmployerLoginModal } from './components/EmployerLoginModal';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
@@ -25,6 +26,7 @@ import { renderReportPages } from './utils/pdfGenerator';
 import { attemptWrite } from './utils/confirmedWrite';
 import { APP_VERSION, fetchLatestVersion, reloadWithNewVersion } from './utils/appVersion';
 import { samePermitContent } from './utils/permit';
+import { draftFromExtraction, ExtractedDocument, ImportDraft } from './utils/batchRows';
 import { CheckCircle2, AlertCircle, AlertTriangle, XCircle, RefreshCw } from 'lucide-react';
 
 type ToastType = 'success' | 'info' | 'warning' | 'error';
@@ -65,6 +67,10 @@ export default function App() {
   // Modals
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
   const [editingPermit, setEditingPermit] = useState<ParkingPermit | null>(null);
+  // Rows read from a photo / document, shown in the form for checking; `formKey` restarts the form when they change
+  const [prefill, setPrefill] = useState<ImportDraft | null>(null);
+  const [formKey, setFormKey] = useState(0);
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
@@ -270,8 +276,25 @@ export default function App() {
     await run;
   };
 
-  const handleSubmitPermit = (permit: ParkingPermit) => {
+  const handleSubmitPermits = (permits: ParkingPermit[]) => {
     const editing = editingPermit;
+    if (permits.length === 0) return;
+    const permit = permits[0];
+    if (!editing && permits.length > 1) {
+      const ids = new Set(permits.map((p) => p.id));
+      runWrite({
+        apply: (prev) => [...prev, ...permits],
+        revert: (prev) => prev.filter((p) => !ids.has(p.id)),
+        call: (t) => importPermits(t, permits),
+        verify: (list) => {
+          const have = new Set(list.map((p) => p.id));
+          return permits.every((p) => have.has(p.id));
+        },
+        success: `บันทึก ${permits.length} รายการเรียบร้อย`,
+        failure: 'บันทึกรายการไม่สำเร็จ',
+      });
+      return;
+    }
     if (editing) {
       runWrite({
         apply: (prev) => prev.map((p) => (p.id === permit.id ? permit : p)),
@@ -315,7 +338,35 @@ export default function App() {
   // ---------------------------------------------------------------
   const openNewRequestForm = () => {
     setEditingPermit(null);
+    setPrefill(null);
+    setFormKey((k) => k + 1);
     setIsRequestModalOpen(true);
+  };
+
+  const openImport = () => setIsImportOpen(true);
+  const handleOpenImport = () => {
+    if (canEdit) openImport();
+    else requireLogin(openImport);
+  };
+
+  /** The reader answered: show the cars in the table for checking. Returns false when there is nothing to show. */
+  const handleExtracted = (doc: ExtractedDocument): boolean => {
+    const draft = draftFromExtraction(doc, selectedDate);
+    if (draft.rows.length === 0) {
+      showToast(
+        draft.skipped.length > 0
+          ? `พบแต่รถจักรยานยนต์ ${draft.skipped.length} คัน ซึ่งไม่รับบันทึก ไม่พบรถยนต์ในเอกสาร`
+          : 'ไม่พบรายการรถยนต์ในเอกสาร ลองภาพที่ชัดขึ้น หรือกรอกเอง',
+        'warning'
+      );
+      return false;
+    }
+    setEditingPermit(null);
+    setPrefill(draft);
+    setFormKey((k) => k + 1);
+    setIsImportOpen(false);
+    setIsRequestModalOpen(true);
+    return true;
   };
 
   const handleOpenAddRequest = () => {
@@ -385,6 +436,7 @@ export default function App() {
         isAuthenticated={canEdit}
         onOpenLogin={() => requireLogin(openNewRequestForm)}
         onOpenNewRequest={handleOpenAddRequest}
+        onOpenImport={handleOpenImport}
         onLogout={handleLogout}
         onOpenPrintModal={() => setIsPrintModalOpen(true)}
         onOpenChangePassword={() => setIsPasswordModalOpen(true)}
@@ -442,11 +494,29 @@ export default function App() {
         onClose={() => {
           setIsRequestModalOpen(false);
           setEditingPermit(null);
+          setPrefill(null);
         }}
-        onSubmit={handleSubmitPermit}
+        onSubmit={handleSubmitPermits}
         defaultDate={selectedDate}
         editingPermit={editingPermit}
         existingPermits={permits}
+        prefill={prefill}
+        instanceKey={formKey}
+        onOpenImport={handleOpenImport}
+      />
+
+      <ImportFromImageModal
+        isOpen={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        token={token}
+        today={selectedDate}
+        onExtracted={handleExtracted}
+        onUnauthorized={() => {
+          setIsImportOpen(false);
+          setToken(null);
+          showToast('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่', 'error');
+          setIsLoginModalOpen(true);
+        }}
       />
 
       <EmployerLoginModal

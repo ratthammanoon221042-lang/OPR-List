@@ -165,3 +165,163 @@ describe('what it answers', () => {
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe(PAGES);
   });
 });
+
+describe('extract (read cars from photos)', () => {
+  const GEMINI = 'https://generativelanguage.googleapis.com/';
+  const file = { mimeType: 'image/jpeg', data: 'AAAA' };
+  const geminiAnswer = (data: unknown) => ({ candidates: [{ content: { parts: [{ text: JSON.stringify(data) }] } }] });
+
+  /** Routes the two upstream calls: Apps Script (checkToken) and Gemini */
+  const upstream = (opts: { token?: 'ok' | 'bad' | 'old'; gemini?: Response | (() => Response) } = {}) =>
+    vi.fn().mockImplementation((url: string) => {
+      if (String(url).startsWith(GEMINI)) {
+        const g = opts.gemini ?? new Response(JSON.stringify(geminiAnswer({ vehicles: [] })), { status: 200 });
+        return Promise.resolve(typeof g === 'function' ? g() : g.clone());
+      }
+      const t = opts.token ?? 'ok';
+      const body =
+        t === 'ok'
+          ? { status: 'success' }
+          : t === 'bad'
+            ? { status: 'error', code: 'unauthorized', message: 'x' }
+            : { status: 'error', code: 'bad_request', message: 'ไม่รู้จัก action: checkToken' };
+      return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
+    });
+
+  let n = 0;
+  const extract = (over: Record<string, unknown> = {}, envOver: Record<string, string> = {}, headers: Record<string, string> = {}) =>
+    handle(
+      new Request('https://proxy.example/', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ action: 'extract', token: `tok-${++n}`, today: '2026-10-09', files: [file], ...over }),
+      }),
+      { ...env, GEMINI_API_KEY: 'key-123', ...envOver }
+    );
+
+  it('refuses without a login token and without calling the AI', async () => {
+    const fetchMock = upstream();
+    vi.stubGlobal('fetch', fetchMock);
+    const res = await extract({ token: '' });
+    expect(res.status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('says so when the AI key is not set up yet', async () => {
+    vi.stubGlobal('fetch', upstream());
+    const res = await extract({}, { GEMINI_API_KEY: '' });
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ code: 'not_configured' });
+  });
+
+  it('checks the token with Apps Script first; a bad token never reaches the AI', async () => {
+    const fetchMock = upstream({ token: 'bad' });
+    vi.stubGlobal('fetch', fetchMock);
+    const res = await extract();
+    expect(res.status).toBe(401);
+    expect(await res.json()).toMatchObject({ code: 'unauthorized' });
+    expect(fetchMock.mock.calls.some(([u]) => String(u).startsWith(GEMINI))).toBe(false);
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(init.body)).toMatchObject({ action: 'checkToken' });
+  });
+
+  it('explains when Apps Script is still an old version', async () => {
+    vi.stubGlobal('fetch', upstream({ token: 'old' }));
+    const res = await extract();
+    expect(res.status).toBe(502);
+    expect((await res.json()).message).toContain('Code.gs');
+  });
+
+  it('rejects bad files and too many files', async () => {
+    vi.stubGlobal('fetch', upstream());
+    expect((await extract({ files: [] })).status).toBe(400);
+    expect((await extract({ files: Array(7).fill(file) })).status).toBe(400);
+    expect((await extract({ files: [{ mimeType: 'text/html', data: 'x' }] })).status).toBe(400);
+    expect((await extract({ files: [{ mimeType: 'image/png' }] })).status).toBe(400);
+  });
+
+  it('sends the files and the instructions to Gemini with the key in a header, and returns only the cleaned fields', async () => {
+    const fetchMock = upstream({
+      gemini: new Response(
+        JSON.stringify(
+          geminiAnswer({
+            department: 'สกมช.',
+            startDate: '2026-10-09',
+            endDate: '2026-10-10',
+            secret: 'ignored',
+            vehicles: [
+              { kind: 'car', brand: 'Toyota', color: 'ขาว', plate: '1กก1234', province: 'กทม.', uncertain: ['plate'], extra: 'x' },
+              { kind: 'motorcycle', brand: 'Honda', note: 'จักรยานยนต์' },
+              { kind: 'weird' },
+            ],
+          })
+        ),
+        { status: 200 }
+      ),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const res = await extract({}, { GEMINI_MODEL: 'gemini-test' });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.status).toBe('success');
+    expect(body.data.secret).toBeUndefined();
+    expect(body.data.vehicles).toHaveLength(3);
+    expect(body.data.vehicles[0]).toMatchObject({ kind: 'car', plate: '1กก1234', uncertain: ['plate'] });
+    expect(body.data.vehicles[0].extra).toBeUndefined();
+    expect(body.data.vehicles[2].kind).toBe('unknown');
+
+    const call = fetchMock.mock.calls.find(([u]) => String(u).startsWith(GEMINI));
+    expect(String(call?.[0])).toContain('/models/gemini-test:generateContent');
+    expect(call?.[1].headers['x-goog-api-key']).toBe('key-123');
+    expect(String(call?.[0])).not.toContain('key-123');
+    const sent = JSON.parse(call?.[1].body);
+    expect(sent.contents[0].parts[0].text).toContain('รถจักรยานยนต์');
+    expect(sent.contents[0].parts[1]).toEqual({ inline_data: { mime_type: 'image/jpeg', data: 'AAAA' } });
+    expect(sent.generationConfig.responseMimeType).toBe('application/json');
+  });
+
+  it('accepts a large body for extract only (other actions keep the 1 MB limit)', async () => {
+    vi.stubGlobal('fetch', upstream());
+    const big = { mimeType: 'image/jpeg', data: 'A'.repeat(2_000_000) };
+    expect((await extract({ files: [big] })).status).toBe(200);
+    expect((await post(JSON.stringify({ action: 'import', pad: 'x'.repeat(1_100_000) }))).status).toBe(413);
+    expect((await extract({ files: [{ mimeType: 'image/jpeg', data: 'A'.repeat(8_100_000) }] })).status).toBe(413);
+  });
+
+  it('turns quota and key problems into clear errors', async () => {
+    vi.stubGlobal('fetch', upstream({ gemini: new Response('{}', { status: 429 }) }));
+    const quota = await extract();
+    expect(quota.status).toBe(429);
+    expect(await quota.json()).toMatchObject({ code: 'rate_limited' });
+
+    vi.stubGlobal('fetch', upstream({ gemini: new Response('{}', { status: 403 }) }));
+    const denied = await extract();
+    expect(denied.status).toBe(502);
+    expect((await denied.json()).message).toContain('GEMINI_API_KEY');
+  });
+
+  it('copes with an empty or unreadable AI answer', async () => {
+    vi.stubGlobal('fetch', upstream({ gemini: new Response(JSON.stringify({ candidates: [] }), { status: 200 }) }));
+    expect((await extract()).status).toBe(502);
+    vi.stubGlobal(
+      'fetch',
+      upstream({ gemini: new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'not json' }] } }] }), { status: 200 }) })
+    );
+    expect((await extract()).status).toBe(502);
+  });
+
+  it('strips a markdown fence around the JSON', async () => {
+    const text = '```json\n' + JSON.stringify({ vehicles: [{ kind: 'car', plate: '9ขข9999' }] }) + '\n```';
+    vi.stubGlobal('fetch', upstream({ gemini: new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text }] } }] }), { status: 200 }) }));
+    const res = await extract();
+    expect((await res.json()).data.vehicles[0].plate).toBe('9ขข9999');
+  });
+
+  it('is refused for a page from another site', async () => {
+    const fetchMock = upstream();
+    vi.stubGlobal('fetch', fetchMock);
+    const res = await extract({}, {}, { Origin: 'https://evil.example' });
+    expect(res.status).toBe(403);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});

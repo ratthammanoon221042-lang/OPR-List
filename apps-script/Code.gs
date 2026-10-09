@@ -101,6 +101,10 @@ function doPost(e) {
       return fail_('unauthorized', 'เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่');
     }
 
+    // ใช้โดยตัวกลาง (Cloudflare Worker) ก่อนให้บริการอ่านเอกสารจากรูป: แค่ยืนยันว่า token ยังใช้ได้
+    if (action === 'checkToken') {
+      return json_({ status: 'success' });
+    }
     if (action === 'changePassword') {
       return handleChangePassword_(body);
     }

@@ -184,6 +184,14 @@ describe('Code.gs', () => {
       expect(t.list().data).toEqual([]);
     });
 
+    it('checkToken tells the relay whether a login is still valid, without touching the sheet', () => {
+      const reads = t.sheetReads.count;
+      expect(t.post({ action: 'checkToken', token })).toEqual({ status: 'success' });
+      expect(t.post({ action: 'checkToken', token: 'forged' })).toMatchObject({ code: 'unauthorized' });
+      expect(t.post({ action: 'checkToken' })).toMatchObject({ code: 'unauthorized' });
+      expect(t.sheetReads.count).toBe(reads);
+    });
+
     it('changes the password, invalidates old tokens and never stores it in plain text', () => {
       expect(t.post({ action: 'changePassword', token, oldPassword: '1234', newPassword: '123' }).code).toBe('weak_password');
       expect(t.post({ action: 'changePassword', token, oldPassword: '1234', newPassword: '1234' }).code).toBe('weak_password');
