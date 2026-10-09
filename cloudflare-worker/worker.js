@@ -305,13 +305,14 @@ async function handleExtract(body, env, scriptUrl, cors) {
       try {
         const err = await res.json();
         errorText = (err && err.error && err.error.message) || '';
-        detail = short((err && err.error && (err.error.status || err.error.message)) || '', 140) || '';
+        detail = short(errorText || (err && err.error && err.error.status) || '', 160) || '';
       } catch {
         // no readable body
       }
       last = { status: res.status, detail };
-      // This model does not take the "think less" setting we tried: use the next form of it, same model
-      if (res.status === 400 && thinkingAt < THINKING_VARIANTS.length - 1 && /think/i.test(errorText)) {
+      // A 400 may be this model not taking the "think less" setting we sent: try the next form of it on the
+      // same model (a few quick calls at most; the working form is only remembered after a success)
+      if (res.status === 400 && thinkingAt < THINKING_VARIANTS.length - 1) {
         thinkingAt++;
         attempt--;
         continue;
@@ -330,7 +331,8 @@ async function handleExtract(body, env, scriptUrl, cors) {
       return fail(429, 'rate_limited', 'โควต้า AI ที่ใช้ฟรีหมดชั่วคราว รอสักพักแล้วลองใหม่ หรือกรอกเอง', cors);
     }
     if ([400, 401, 403, 404].includes(last.status)) {
-      return fail(502, 'server_error', `AI ปฏิเสธคำขอ (HTTP ${last.status}${last.detail ? `: ${last.detail}` : ''}) ตรวจสอบ GEMINI_API_KEY และชื่อรุ่น GEMINI_MODEL ที่ Cloudflare`, cors);
+      const hint = last.status === 400 ? '' : ' ตรวจสอบ GEMINI_API_KEY และชื่อรุ่น GEMINI_MODEL ที่ Cloudflare';
+      return fail(502, 'server_error', `AI ปฏิเสธคำขอ (HTTP ${last.status}${last.detail ? `: ${last.detail}` : ''})${hint}`, cors);
     }
     if (last.status === 503) {
       return fail(502, 'server_error', 'AI ของ Google กำลังมีผู้ใช้งานหนาแน่น (HTTP 503) ลองใหม่อีกครั้งในอีกสักครู่', cors);

@@ -432,6 +432,47 @@ describe('extract (read cars from photos)', () => {
     expect(res.status).toBe(403);
     expect(fetchMock).not.toHaveBeenCalled();
   });
+  it('also tries the other forms after a 400 whose text does not mention thinking, and shows Google\'s message when nothing works', async () => {
+    vi.resetModules();
+    const fresh = (await import('./worker.js')).default;
+    const call = (envOver: Record<string, string> = {}) =>
+      fresh.fetch(
+        new Request('https://proxy.example/', {
+          method: 'POST',
+          body: JSON.stringify({ action: 'extract', token: `tok-fresh-${++n}`, today: '2026-10-09', files: [file] }),
+        }),
+        { ...env, GEMINI_API_KEY: 'key-123', GEMINI_RETRY_DELAY_MS: '0', ...envOver }
+      );
+    const bad = () => new Response(JSON.stringify({ error: { code: 400, status: 'INVALID_ARGUMENT', message: 'Request contains an invalid argument.' } }), { status: 400 });
+
+    let calls = 0;
+    const seen: unknown[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string, init: { body: string }) => {
+        if (!String(url).startsWith(GEMINI)) return Promise.resolve(new Response(JSON.stringify({ status: 'success' }), { status: 200 }));
+        calls++;
+        seen.push(JSON.parse(init.body).generationConfig.thinkingConfig ?? null);
+        return Promise.resolve(calls <= 2 ? bad() : new Response(JSON.stringify(geminiAnswer({ vehicles: [] })), { status: 200 }));
+      })
+    );
+    expect((await call()).status).toBe(200);
+    expect(seen).toEqual([{ thinkingBudget: 0 }, { thinkingLevel: 'minimal' }, null]);
+
+    // nothing works (for example a picture Google cannot process): the real reason is shown
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) =>
+        Promise.resolve(String(url).startsWith(GEMINI) ? bad() : new Response(JSON.stringify({ status: 'success' }), { status: 200 }))
+      )
+    );
+    const res = await call();
+    expect(res.status).toBe(502);
+    const message = (await res.json()).message;
+    expect(message).toContain('HTTP 400: Request contains an invalid argument.');
+    expect(message).not.toContain('GEMINI_API_KEY');
+  });
+
   it('falls back through the "think less" forms when a model rejects them, and remembers what works (keep last: it changes the remembered form)', async () => {
     const seen: unknown[] = [];
     const rejectThinking = () =>
