@@ -204,7 +204,7 @@ const SecurityChecklist: React.FC<Omit<SecurityChecklistModalProps, 'isOpen'>> =
                         {permit.vehicleBrand}
                       </td>
                       <td className="py-2.5 px-3 border border-slate-300 text-slate-700">
-                        {permit.vehicleColor}
+                        {permit.vehicleColor || '-'}
                       </td>
                       <td className="py-2.5 px-3 border border-slate-300 text-slate-600">
                         <span>{permit.department || '-'}</span>

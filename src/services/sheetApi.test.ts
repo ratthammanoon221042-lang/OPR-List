@@ -69,6 +69,18 @@ describe('error messages', () => {
   });
 });
 
+describe('optional colour', () => {
+  it("sends '-' for a permit without a colour (an older Code.gs still insists on one)", async () => {
+    markSynced();
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(reply(200, { status: 'success', data: [] })));
+    vi.stubGlobal('fetch', fetchMock);
+    await addPermit('tok', { ...permit, vehicleColor: '' });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).permit.vehicleColor).toBe('-');
+    await addPermit('tok', permit);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).permit.vehicleColor).toBe('ขาว');
+  });
+});
+
 describe('what counts as an unclear outcome', () => {
   it('lost replies and error statuses are unclear; answers from the script are definite', () => {
     expect(isOutcomeUnknown(new ApiError('network', 'x'))).toBe(true);

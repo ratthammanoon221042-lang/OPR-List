@@ -38,9 +38,10 @@ describe('rows', () => {
 
   it('lists what is missing in a started row', () => {
     const r = newRow({ plate: '1กก1234' });
-    expect(missingFields(r)).toEqual(['brand', 'color', 'province']);
+    expect(missingFields(r)).toEqual(['brand', 'province']); // the colour is optional
     expect(isRowComplete(r)).toBe(false);
     expect(isRowComplete(car())).toBe(true);
+    expect(isRowComplete(car({ color: '' }))).toBe(true);
     expect(missingFields(newRow({ plate: '   ' }))).toContain('plate');
   });
 });
@@ -59,6 +60,13 @@ describe('typed provinces', () => {
     const row = car({ province: 'กทม.' });
     const clashes = findBatchClashes([row], { startDate: '2026-10-09', endDate: '2026-10-10' }, [saved()]);
     expect(clashes.get(row.key)?.existing).toHaveLength(1);
+  });
+});
+
+describe('buildPermits without a colour', () => {
+  it('saves a car with no colour as an empty colour', () => {
+    const [p] = buildPermits([car({ color: '' })], common);
+    expect(p.vehicleColor).toBe('');
   });
 });
 

@@ -56,7 +56,8 @@ export function normalizePermit(raw: RawPermit): ParkingPermit {
     licensePlate: plate,
     province,
     vehicleBrand: text(raw.vehicleBrand) || 'ไม่ระบุ',
-    vehicleColor: text(raw.vehicleColor) || 'ไม่ระบุ',
+    // The colour is optional: '-' (how the sheet shows "none") and blank both mean no colour
+    vehicleColor: text(raw.vehicleColor) === '-' ? '' : text(raw.vehicleColor),
     parkingFloor: floor,
     department: text(raw.department) || undefined,
     subDepartment: text(raw.subDepartment) || undefined,

@@ -232,19 +232,22 @@ export async function changePassword(
   return String(json.token);
 }
 
+/** The colour is optional in the app; the sheet (and an older Code.gs that still requires one) gets '-' for none */
+const toWire = (permit: ParkingPermit): ParkingPermit => ({ ...permit, vehicleColor: permit.vehicleColor.trim() || '-' });
+
 // Every write answers with the complete, up-to-date list, so no second request is needed.
 export const addPermit = async (token: string, permit: ParkingPermit) =>
-  toPermits(await post({ action: 'add', token, permit }));
+  toPermits(await post({ action: 'add', token, permit: toWire(permit) }));
 
 export const updatePermit = async (token: string, permit: ParkingPermit) =>
-  toPermits(await post({ action: 'update', token, permit }));
+  toPermits(await post({ action: 'update', token, permit: toWire(permit) }));
 
 export const deletePermit = async (token: string, id: string) =>
   toPermits(await post({ action: 'delete', token, id }));
 
 /** Several permits at once. The script skips ids it already has, so sending the same batch twice is safe. */
 export const importPermits = async (token: string, permits: ParkingPermit[]) =>
-  toPermits(await post({ action: 'import', token, permits }));
+  toPermits(await post({ action: 'import', token, permits: permits.map(toWire) }));
 
 // ---------------------------------------------------------------
 // Reading permits from photos / documents (cloudflare-worker, Gemini)

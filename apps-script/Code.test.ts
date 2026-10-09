@@ -235,6 +235,15 @@ describe('Code.gs', () => {
   });
 
   describe('data', () => {
+    it('the colour is optional: stored as "-" and read back as empty', () => {
+      expect(t.post({ action: 'add', token, permit: permit({ id: 'PK-NC', vehicleColor: '' }) }).status).toBe('success');
+      expect(t.post({ action: 'add', token, permit: permit({ id: 'PK-DASH', vehicleColor: '-' }) }).status).toBe('success');
+      const rows = t.list().data;
+      expect(rows.map((r: { vehicleColor: string }) => r.vehicleColor)).toEqual(['', '']);
+      const [sheet] = [...t.sheets.values()];
+      expect(sheet.data[1][5]).toBe('-'); // the sheet shows "-" for no colour, like it does for no department
+    });
+
     it('adds a permit and returns dates as plain YYYY-MM-DD text', () => {
       expect(t.post({ action: 'add', token, permit: permit() }).status).toBe('success');
       const [row] = t.list().data;

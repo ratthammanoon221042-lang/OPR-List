@@ -17,7 +17,7 @@ export function permitToExportRow(permit: ParkingPermit, index: number): (string
   return [
     index + 1,
     permit.vehicleBrand,
-    permit.vehicleColor,
+    permit.vehicleColor || '-',
     permit.department || '-',
     permit.subDepartment || '-',
     permit.licensePlate.replace(/\s+/g, ''),

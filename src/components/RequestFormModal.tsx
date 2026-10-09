@@ -46,9 +46,8 @@ function splitOther(value: string | undefined, options: string[]): { select: str
   return options.includes(value) ? { select: value, custom: '' } : { select: 'อื่นๆ', custom: value };
 }
 
-const FIELD_LABEL: Record<'brand' | 'color' | 'plate' | 'province', string> = {
+const FIELD_LABEL: Record<'brand' | 'plate' | 'province', string> = {
   brand: 'ยี่ห้อ',
-  color: 'สี',
   plate: 'ทะเบียน',
   province: 'จังหวัด',
 };
@@ -246,7 +245,7 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
   const cellClass = (row: DraftRow, field: 'brand' | 'color' | 'plate' | 'province', clash: boolean) => {
     const started = !isRowEmpty(row);
     const value = field === 'plate' ? cleanPlate(row.plate) : field === 'province' ? rowProvince(row) : row[field].trim();
-    const missing = started && !value;
+    const missing = started && field !== 'color' && !value;
     if (row.flags.includes(field)) return `${inputBase} bg-amber-100 border-amber-400`;
     if (missing) return `${inputBase} border-rose-400 bg-white`;
     return `${inputBase} ${clash ? 'bg-white border-rose-200' : 'border-slate-300'}`;
@@ -487,7 +486,7 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
               <div className="hidden md:grid grid-cols-[2.5rem_minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,1.1fr)_minmax(0,1.3fr)_9rem_2.75rem] gap-3 px-3 pb-2 text-sm font-semibold text-slate-600">
                 <span className="text-center">#</span>
                 <span>ยี่ห้อ <span className="text-rose-500">*</span></span>
-                <span>สี <span className="text-rose-500">*</span></span>
+                <span>สี <span className="font-normal text-slate-400">(ไม่บังคับ)</span></span>
                 <span>ทะเบียน <span className="text-rose-500">*</span> <span className="font-normal text-slate-400">(ติดกัน)</span></span>
                 <span>จังหวัด <span className="text-rose-500">*</span></span>
                 <span>ชั้นที่จอด <span className="text-rose-500">*</span></span>
@@ -552,7 +551,7 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
                           type="text"
                           list="color-options"
                           aria-label={`สี แถวที่ ${i + 1}`}
-                          placeholder="เลือกหรือพิมพ์สี"
+                          placeholder="เลือกหรือพิมพ์สี (ถ้ามี)"
                           value={row.color}
                           onChange={(e) => changeRow(row.key, { color: e.target.value }, ['color'])}
                           className={cellClass(row, 'color', !!clash)}

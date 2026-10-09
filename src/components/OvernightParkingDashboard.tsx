@@ -443,7 +443,7 @@ export const OvernightParkingDashboard: React.FC<OvernightParkingDashboardProps>
 
                       {/* 3. สี */}
                       <td className="py-3.5 px-2.5 text-slate-600">
-                        {permit.vehicleColor}
+                        {permit.vehicleColor || '-'}
                       </td>
 
                       {/* 4. หน่วยงาน */}
@@ -562,10 +562,14 @@ export const OvernightParkingDashboard: React.FC<OvernightParkingDashboardProps>
                       <span className="font-bold text-slate-900 text-base">
                         {permit.vehicleBrand}
                       </span>
-                      <span className="text-slate-400 text-xs">·</span>
-                      <span className="text-slate-600 text-sm font-medium">
-                        สี{permit.vehicleColor}
-                      </span>
+                      {permit.vehicleColor && (
+                        <>
+                          <span className="text-slate-400 text-xs">·</span>
+                          <span className="text-slate-600 text-sm font-medium">
+                            สี{permit.vehicleColor}
+                          </span>
+                        </>
+                      )}
                     </div>
 
                     {/* ชั้นที่จอด: B1 หรือ B2 */}

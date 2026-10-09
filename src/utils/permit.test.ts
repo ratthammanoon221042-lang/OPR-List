@@ -116,3 +116,11 @@ describe('samePermitContent', () => {
     expect(samePermitContent({ ...base, subDepartment: undefined }, { ...base, subDepartment: '' })).toBe(true);
   });
 });
+
+describe('optional colour', () => {
+  it("'-' from the sheet and a blank colour both mean no colour", () => {
+    expect(normalizePermit({ ...base, vehicleColor: '-' }).vehicleColor).toBe('');
+    expect(normalizePermit({ ...base, vehicleColor: '' }).vehicleColor).toBe('');
+    expect(normalizePermit({ ...base, vehicleColor: 'แดง' }).vehicleColor).toBe('แดง');
+  });
+});
