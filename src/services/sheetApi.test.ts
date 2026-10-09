@@ -80,6 +80,8 @@ describe('optional colour', () => {
     expect(JSON.parse(fetchMock.mock.calls[1][1].body).permit.vehicleColor).toBe('ขาว');
     await addPermit('tok', { ...permit, vehicleBrand: ' ' });
     expect(JSON.parse(fetchMock.mock.calls[2][1].body).permit.vehicleBrand).toBe('-');
+    await addPermit('tok', { ...permit, province: '' });
+    expect(JSON.parse(fetchMock.mock.calls[3][1].body).permit.province).toBe('-');
   });
 });
 

@@ -177,7 +177,7 @@ function drawPage(
           font: `bold 18px ${FONT}`,
           color: '#0f172a',
         },
-        { text: permit.province || 'กรุงเทพมหานคร', align: 'center', font: `15px ${FONT}`, color: '#0f172a' },
+        { text: permit.province || '-', align: 'center', font: `15px ${FONT}`, color: '#0f172a' },
         {
           text: permit.parkingFloor,
           align: 'center',

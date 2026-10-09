@@ -35,7 +35,8 @@ export function normalizePermit(raw: RawPermit): ParkingPermit {
   }
 
   plate = plate.replace(/\s+/g, '');
-  if (!province) province = 'กรุงเทพมหานคร';
+  // The province is optional: '-' (how the sheet shows "none") and blank both mean no province
+  if (province === '-') province = '';
 
   const floorText = text(raw.parkingFloor);
   const floor: 'B1' | 'B2' = /B\s*2|ชั้น\s*2|^2$/i.test(floorText) ? 'B2' : 'B1';
@@ -108,7 +109,8 @@ export function findOverlappingPermits(
     (p) =>
       p.id !== candidate.id &&
       cleanPlate(p.licensePlate) === plate &&
-      p.province === candidate.province &&
+      // a plate without a province (it is optional) is compared on the plate alone
+      (!p.province || !candidate.province || p.province === candidate.province) &&
       dateRangesOverlap(p, candidate)
   );
 }

@@ -52,11 +52,14 @@ export const isRowEmpty = (r: DraftRow): boolean => !r.brand.trim() && !r.color.
 /** The province as the list spells it ("กทม." and "จ.นนทบุรี" are understood), or '' when it is not a province */
 export const rowProvince = (r: DraftRow): string => normalizeProvince(r.province);
 
-/** A plate and a province from the list are needed (brand and colour are optional); typed text that is no province counts as missing */
+/**
+ * Only the plate is needed (brand, colour and province are optional). A province that was typed but is
+ * not one of the list is reported too, so a misspelling does not end up in the sheet.
+ */
 export const missingFields = (r: DraftRow): Array<'plate' | 'province'> => {
   const missing: Array<'plate' | 'province'> = [];
   if (!cleanPlate(r.plate)) missing.push('plate');
-  if (!rowProvince(r)) missing.push('province');
+  if (r.province.trim() && !rowProvince(r)) missing.push('province');
   return missing;
 };
 
@@ -111,13 +114,15 @@ export function findBatchClashes(
     const plate = cleanPlate(row.plate);
     const province = rowProvince(row);
 
+    // A missing province (optional) is compared on the plate alone
+    const sameProvince = (a: string, b: string) => !a || !b || a === b;
     const existing = existingPermits.filter(
-      (p) => cleanPlate(p.licensePlate) === plate && p.province === province && dateRangesOverlap(p, range)
+      (p) => cleanPlate(p.licensePlate) === plate && sameProvince(p.province, province) && dateRangesOverlap(p, range)
     );
     const inBatch = active.some((other, j) => {
       if (j === i) return false;
       const o = rowRange(other, common);
-      return cleanPlate(other.plate) === plate && rowProvince(other) === province && dateRangesOverlap(o, range);
+      return cleanPlate(other.plate) === plate && sameProvince(rowProvince(other), province) && dateRangesOverlap(o, range);
     });
     if (existing.length || inBatch) result.set(row.key, { existing, inBatch });
   });
@@ -292,7 +297,6 @@ const describeVehicle = (v: ExtractedVehicle): string =>
     .filter(Boolean)
     .join(' ') || 'ไม่ทราบรายละเอียด';
 
-const DEFAULT_PROVINCE = 'กรุงเทพมหานคร';
 const UNCERTAIN_FIELDS: RowField[] = ['brand', 'color', 'plate', 'province', 'floor'];
 
 /**
@@ -325,9 +329,9 @@ export function draftFromExtraction(doc: ExtractedDocument, fallbackDate: string
     const color = normalizeColor(str(v.color) || fromText.color);
     if (color && !matchOption(color, VEHICLE_COLORS)) flags.add('color');
     const plate = cleanPlate(thaiDigitsToArabic(str(v.plate)));
-    // Tables often leave the province out: most plates are Bangkok, so start from that and ask for a check
-    const province = str(v.province) ? normalizeProvince(str(v.province)) : DEFAULT_PROVINCE;
-    if (!str(v.province) || !province) flags.add('province');
+    // The province is optional: left empty when the document gives none; a written one that is no province is flagged
+    const province = normalizeProvince(str(v.province));
+    if (str(v.province) && !province) flags.add('province');
     if (!str(v.floor)) flags.add('floor');
     const floor: 'B1' | 'B2' = /B\s*2|ชั้น\s*2|^2$/i.test(str(v.floor)) ? 'B2' : 'B1';
 

@@ -40,8 +40,9 @@ describe('rows', () => {
 
   it('lists what is missing in a started row', () => {
     const r = newRow({ plate: '1กก1234' });
-    expect(missingFields(r)).toEqual(['province']); // the brand and the colour are optional
-    expect(isRowComplete(r)).toBe(false);
+    expect(missingFields(r)).toEqual([]); // brand, colour and province are optional
+    expect(isRowComplete(r)).toBe(true);
+    expect(isRowComplete(newRow({ plate: '1กก1234', province: 'ไม่ใช่จังหวัด' }))).toBe(false);
     expect(isRowComplete(car())).toBe(true);
     expect(isRowComplete(car({ color: '' }))).toBe(true);
     expect(isRowComplete(car({ brand: '', color: '' }))).toBe(true);
@@ -133,7 +134,7 @@ describe('findBatchClashes', () => {
   });
 
   it('skips incomplete rows and invalid date ranges', () => {
-    expect(findBatchClashes([newRow({ plate: '1กก1234' })], range, [saved()]).size).toBe(0);
+    expect(findBatchClashes([newRow({ province: 'กรุงเทพมหานคร' })], range, [saved()]).size).toBe(0); // no plate yet
     expect(findBatchClashes([car()], { startDate: '2026-10-10', endDate: '2026-10-09' }, [saved()]).size).toBe(0);
   });
 });
@@ -311,16 +312,16 @@ describe('a table with the colour inside the model text and a province sometimes
     ],
   };
 
-  it('splits brand and colour, and starts a missing province as Bangkok with a check flag', () => {
+  it('splits brand and colour; a missing province stays empty (optional) and is not flagged', () => {
     const draft = draftFromExtraction(doc, '2026-10-09');
     expect(draft.common.department).toBe('สป.ดศ.');
     expect(draft.rows[0]).toMatchObject({ brand: 'Honda', color: 'เทา' });
     expect(draft.rows[1]).toMatchObject({ brand: 'Haval', color: 'ดำ' });
     expect(draft.rows[2]).toMatchObject({ brand: 'Toyota', color: '', plate: 'งจ2485', province: 'นครราชสีมา' });
-    expect(draft.rows[3]).toMatchObject({ plate: '6ขฒ4332', province: 'กรุงเทพมหานคร' });
-    expect(draft.rows[3].flags).toContain('province');
+    expect(draft.rows[3]).toMatchObject({ plate: '6ขฒ4332', province: '' });
+    expect(draft.rows[3].flags).not.toContain('province');
     expect(draft.rows[0].flags).not.toContain('brand');
-    expect(isRowComplete(draft.rows[3])).toBe(true); // colour is optional, province defaulted
+    expect(isRowComplete(draft.rows[3])).toBe(true); // only the plate is required
   });
 
   it('every car gets the one department of the batch', () => {

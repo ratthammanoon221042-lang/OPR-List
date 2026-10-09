@@ -216,7 +216,7 @@ const SecurityChecklist: React.FC<Omit<SecurityChecklistModalProps, 'isOpen'>> =
                         {permit.licensePlate.replace(/\s+/g, '')}
                       </td>
                       <td className="py-2.5 px-3 border border-slate-300 text-center font-medium text-slate-800">
-                        {permit.province || 'กรุงเทพมหานคร'}
+                        {permit.province || '-'}
                       </td>
                       <td className="py-2.5 px-3 border border-slate-300 text-center font-bold text-blue-700">
                         {permit.parkingFloor}

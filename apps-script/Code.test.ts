@@ -235,6 +235,14 @@ describe('Code.gs', () => {
   });
 
   describe('data', () => {
+    it('the province is optional: stored as "-" and read back as empty (no longer turned into Bangkok)', () => {
+      expect(t.post({ action: 'add', token, permit: permit({ id: 'PK-NP', province: '' }) }).status).toBe('success');
+      expect(t.post({ action: 'add', token, permit: permit({ id: 'PK-NP2', province: '-' }) }).status).toBe('success');
+      expect(t.list().data.map((r: { province: string }) => r.province)).toEqual(['', '']);
+      const [sheet] = [...t.sheets.values()];
+      expect(sheet.data[1][2]).toBe('-');
+    });
+
     it('the brand is optional too: stored as "-" and read back as empty', () => {
       expect(t.post({ action: 'add', token, permit: permit({ id: 'PK-NB', vehicleBrand: '' }) }).status).toBe('success');
       expect(t.post({ action: 'add', token, permit: permit({ id: 'PK-NB2', vehicleBrand: '-' }) }).status).toBe('success');

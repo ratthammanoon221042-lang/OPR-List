@@ -370,7 +370,7 @@ function validatePermit_(raw) {
     id: clean_(raw.id, 60),
     createdAt: clean_(raw.createdAt, 40) || new Date().toISOString(),
     licensePlate: clean_(raw.licensePlate, 20).replace(/\s+/g, ''),
-    province: clean_(raw.province, 60) || 'กรุงเทพมหานคร',
+    province: clean_(raw.province, 60),
     parkingFloor: raw.parkingFloor === 'B2' ? 'B2' : raw.parkingFloor === 'B1' ? 'B1' : '',
     vehicleBrand: clean_(raw.vehicleBrand, 60),
     vehicleColor: clean_(raw.vehicleColor, 40),
@@ -449,7 +449,7 @@ function writeRow_(sheet, rowNumber, p) {
   range.setValues([[
     p.id,
     p.licensePlate,
-    p.province,
+    p.province || '-',
     p.parkingFloor,
     p.vehicleBrand || '-',
     p.vehicleColor || '-',
@@ -528,7 +528,7 @@ function readAllPermits_(sheet) {
     list.push({
       id: String(row[0] || 'PK-ROW-' + (i + 2)),
       licensePlate: String(row[1] || '').replace(/\s+/g, ''),
-      province: String(row[2] || 'กรุงเทพมหานคร'),
+      province: row[2] && row[2] !== '-' ? String(row[2]) : '',
       parkingFloor: String(row[3]).indexOf('2') !== -1 ? 'B2' : 'B1',
       vehicleBrand: row[4] && row[4] !== '-' ? String(row[4]) : '',
       vehicleColor: row[5] && row[5] !== '-' ? String(row[5]) : '',

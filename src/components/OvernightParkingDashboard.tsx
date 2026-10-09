@@ -427,7 +427,7 @@ export const OvernightParkingDashboard: React.FC<OvernightParkingDashboardProps>
               ) : (
                 displayedPermits.map((permit, index) => {
                   const plateClean = permit.licensePlate.replace(/\s+/g, '');
-                  const provText = permit.province || 'กรุงเทพมหานคร';
+                  const provText = permit.province || '-';
 
                   return (
                     <tr key={permit.id} className="hover:bg-slate-50/80 transition-colors">
@@ -545,7 +545,7 @@ export const OvernightParkingDashboard: React.FC<OvernightParkingDashboardProps>
           ) : (
             displayedPermits.map((permit, index) => {
               const plateClean = permit.licensePlate.replace(/\s+/g, '');
-              const provText = permit.province || 'กรุงเทพมหานคร';
+              const provText = permit.province || '-';
 
               return (
                 <div

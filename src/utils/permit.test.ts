@@ -24,12 +24,13 @@ describe('normalizePermit', () => {
     expect(p).toMatchObject({ licensePlate: '1กข4590', province: 'นนทบุรี' });
   });
 
-  it('understands Bangkok shorthand and defaults to Bangkok', () => {
+  it('understands Bangkok shorthand; a missing province stays empty (it is optional)', () => {
     expect(normalizePermit({ ...base, licensePlate: 'ดด111 กทม.', province: '' })).toMatchObject({
       licensePlate: 'ดด111',
       province: 'กรุงเทพมหานคร',
     });
-    expect(normalizePermit({ ...base, province: undefined }).province).toBe('กรุงเทพมหานคร');
+    expect(normalizePermit({ ...base, province: undefined }).province).toBe('');
+    expect(normalizePermit({ ...base, province: '-' }).province).toBe('');
   });
 
   it.each([
@@ -130,6 +131,15 @@ describe('optional brand', () => {
     expect(normalizePermit({ ...base, vehicleBrand: '-' }).vehicleBrand).toBe('');
     expect(normalizePermit({ ...base, vehicleBrand: '' }).vehicleBrand).toBe('');
     expect(normalizePermit({ ...base, vehicleBrand: 'Honda' }).vehicleBrand).toBe('Honda');
+  });
+});
+
+describe('permits without a province', () => {
+  it('a plate without a province is compared on the plate alone when looking for overlaps', () => {
+    const other = { ...base, id: 'PK-2', province: '' };
+    expect(findOverlappingPermits({ ...base, id: 'PK-NEW' }, [other])).toHaveLength(1);
+    expect(findOverlappingPermits({ ...base, id: 'PK-NEW', province: '' }, [base])).toHaveLength(1);
+    expect(findOverlappingPermits({ ...base, id: 'PK-NEW', province: 'นนทบุรี' }, [base])).toHaveLength(0);
   });
 });
 
