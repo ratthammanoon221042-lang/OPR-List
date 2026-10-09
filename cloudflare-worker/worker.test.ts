@@ -381,6 +381,50 @@ describe('extract (read cars from photos)', () => {
     expect((await res.json()).data.vehicles[0].plate).toBe('9ขข9999');
   });
 
+  it('reports how long it took and which model answered; asks the AI to think less', async () => {
+    const fetchMock = upstream();
+    vi.stubGlobal('fetch', fetchMock);
+    const body = (await (await extract({}, { GEMINI_MODEL: 'gemini-test' })).json()).data;
+    expect(body.meta).toMatchObject({ model: 'gemini-test' });
+    expect(body.meta.totalMs).toBeGreaterThanOrEqual(body.meta.aiMs);
+    const call = fetchMock.mock.calls.find(([u]) => String(u).startsWith(GEMINI));
+    expect(JSON.parse(call?.[1].body).generationConfig.thinkingConfig).toEqual({ thinkingBudget: 0 });
+  });
+
+  it('GEMINI_THINKING=default sends no thinking setting at all', async () => {
+    const fetchMock = upstream();
+    vi.stubGlobal('fetch', fetchMock);
+    await extract({}, { GEMINI_THINKING: 'default' });
+    const call = fetchMock.mock.calls.find(([u]) => String(u).startsWith(GEMINI));
+    expect(JSON.parse(call?.[1].body).generationConfig.thinkingConfig).toBeUndefined();
+  });
+
+  it('verify warms the login check without reading anything', async () => {
+    const fetchMock = upstream();
+    vi.stubGlobal('fetch', fetchMock);
+    const res = await handle(
+      new Request('https://proxy.example/', { method: 'POST', body: JSON.stringify({ action: 'verify', token: 'warm-1' }) }),
+      { ...env, GEMINI_API_KEY: 'key-123' }
+    );
+    expect(res.status).toBe(200);
+    expect(fetchMock.mock.calls.every(([u]) => !String(u).startsWith(GEMINI))).toBe(true);
+    // and the login check is remembered: reading right after does not ask Apps Script again
+    await handle(
+      new Request('https://proxy.example/', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'extract', token: 'warm-1', today: '2026-10-09', files: [file] }),
+      }),
+      { ...env, GEMINI_API_KEY: 'key-123' }
+    );
+    expect(fetchMock.mock.calls.filter(([u]) => !String(u).startsWith(GEMINI))).toHaveLength(1);
+
+    const bad = await handle(
+      new Request('https://proxy.example/', { method: 'POST', body: JSON.stringify({ action: 'verify', token: '' }) }),
+      env
+    );
+    expect(bad.status).toBe(401);
+  });
+
   it('is refused for a page from another site', async () => {
     const fetchMock = upstream();
     vi.stubGlobal('fetch', fetchMock);
@@ -388,4 +432,29 @@ describe('extract (read cars from photos)', () => {
     expect(res.status).toBe(403);
     expect(fetchMock).not.toHaveBeenCalled();
   });
+  it('falls back through the "think less" forms when a model rejects them, and remembers what works (keep last: it changes the remembered form)', async () => {
+    const seen: unknown[] = [];
+    const rejectThinking = () =>
+      new Response(JSON.stringify({ error: { code: 400, status: 'INVALID_ARGUMENT', message: 'Unknown name "thinkingBudget": thinking config not supported' } }), { status: 400 });
+    let calls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string, init: { body: string }) => {
+        if (!String(url).startsWith(GEMINI)) return Promise.resolve(new Response(JSON.stringify({ status: 'success' }), { status: 200 }));
+        calls++;
+        seen.push(JSON.parse(init.body).generationConfig.thinkingConfig ?? null);
+        return Promise.resolve(
+          calls <= 2 ? rejectThinking() : new Response(JSON.stringify(geminiAnswer({ vehicles: [] })), { status: 200 })
+        );
+      })
+    );
+    expect((await extract({}, { GEMINI_RETRY_DELAY_MS: '0' })).status).toBe(200);
+    expect(seen).toEqual([{ thinkingBudget: 0 }, { thinkingLevel: 'minimal' }, null]);
+    // next request starts with the form that worked
+    seen.length = 0;
+    calls = 99;
+    await extract({}, { GEMINI_RETRY_DELAY_MS: '0' });
+    expect(seen).toEqual([null]);
+  });
+
 });

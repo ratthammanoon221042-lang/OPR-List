@@ -264,6 +264,20 @@ const EXTRACT_TIMEOUT_MS = 70_000;
  * Asks the relay to read the documents. Only the relay can do this (it holds the AI key), so there is
  * no direct fallback; the relay also checks the login token with the script first.
  */
+/**
+ * Lets the relay check the login ahead of time (it remembers the answer for a few minutes), so the
+ * first reading does not wait for that check. Failures are ignored: reading checks the login itself.
+ */
+export function warmExtract(token: string): void {
+  const proxy = getProxyUrl();
+  if (!proxy) return;
+  fetch(proxy, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action: 'verify', token }),
+  }).catch(() => undefined);
+}
+
 export async function extractDocument(token: string, files: ExtractFile[], today: string): Promise<ExtractedDocument> {
   const proxy = getProxyUrl();
   if (!proxy) {

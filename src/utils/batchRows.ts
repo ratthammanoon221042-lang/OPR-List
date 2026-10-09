@@ -186,7 +186,16 @@ export interface ExtractedVehicle {
   note?: string | null;
 }
 
+/** How long the reading took, reported by the relay */
+export interface ReadMeta {
+  model: string;
+  loginMs: number;
+  aiMs: number;
+  totalMs: number;
+}
+
 export interface ExtractedDocument {
+  meta?: ReadMeta | null;
   department?: string | null;
   subDepartment?: string | null;
   startDate?: string | null;
@@ -207,6 +216,8 @@ export interface ImportDraft {
   skipped: SkippedVehicle[];
   /** True when the document gave no dates and the selected date was used */
   datesAssumed: boolean;
+  /** Timing and model of the reading, when the relay reported it */
+  meta: ReadMeta | null;
   notes: string;
 }
 
@@ -305,6 +316,7 @@ export function draftFromExtraction(doc: ExtractedDocument, fallbackDate: string
     },
     skipped,
     datesAssumed,
+    meta: doc.meta && typeof doc.meta.totalMs === 'number' ? doc.meta : null,
     notes: str(doc.notes),
   };
 }

@@ -239,3 +239,12 @@ describe('draftFromExtraction', () => {
     expect(draft.common.department).toBe('กองการสื่อสารโทรคมนาคม');
   });
 });
+
+describe('reading time', () => {
+  it('keeps the timing the relay reported, and ignores a missing or broken one', () => {
+    const meta = { model: 'gemini-x', loginMs: 300, aiMs: 4200, totalMs: 4500 };
+    expect(draftFromExtraction({ vehicles: [], meta }, '2026-10-01').meta).toEqual(meta);
+    expect(draftFromExtraction({ vehicles: [] }, '2026-10-01').meta).toBeNull();
+    expect(draftFromExtraction({ vehicles: [], meta: { model: 'x' } as never }, '2026-10-01').meta).toBeNull();
+  });
+});

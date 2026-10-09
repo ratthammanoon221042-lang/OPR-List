@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Camera, FileText, Loader2, X, ImagePlus, AlertCircle, ShieldAlert } from 'lucide-react';
-import { ExtractFile, extractDocument, isApiError } from '../services/sheetApi';
+import { ExtractFile, extractDocument, isApiError, warmExtract } from '../services/sheetApi';
 import { ACCEPTED_TYPES, MAX_IMPORT_FILES, MAX_TOTAL_BASE64_CHARS, prepareFile } from '../utils/prepareFiles';
 import { ExtractedDocument } from '../utils/batchRows';
 
@@ -45,6 +45,23 @@ const ImportDialog: React.FC<Omit<ImportFromImageModalProps, 'isOpen'>> = ({
   useEffect(() => {
     filesRef.current = files;
   }, [files]);
+
+  // Get the relay's login check out of the way while the user picks files
+  useEffect(() => {
+    if (token) warmExtract(token);
+  }, [token]);
+
+  // Seconds spent reading, shown so a long wait is not mistaken for a hang
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (busy !== 'reading') return;
+    const startedAt = Date.now();
+    const timer = setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 500);
+    return () => {
+      clearInterval(timer);
+      setElapsed(0);
+    };
+  }, [busy]);
 
   const addFiles = useCallback(async (picked: File[]) => {
     if (picked.length === 0) return;
@@ -242,7 +259,7 @@ const ImportDialog: React.FC<Omit<ImportFromImageModalProps, 'isOpen'>> = ({
         <div className="px-4 sm:px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2.5">
           <span className="text-sm text-slate-600" aria-live="polite">
             {reading
-              ? 'กำลังอ่านเอกสาร อาจใช้เวลาครึ่งนาที อย่าปิดหน้านี้'
+              ? `กำลังอ่านเอกสาร ${elapsed} วินาที (ปกติไม่เกิน 20-30 วินาที) อย่าปิดหน้านี้`
               : busy === 'preparing'
                 ? 'กำลังเตรียมไฟล์...'
                 : files.length > 0

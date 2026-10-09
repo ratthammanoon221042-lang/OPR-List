@@ -41,6 +41,10 @@ const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models
 const DEFAULT_GEMINI_MODEL = 'gemini-flash-latest';
 // ถ้ารุ่นหลักไม่ว่าง (503 / โควต้าเต็ม) ลองรุ่นสำรองตามลำดับ (คั่นด้วยจุลภาค) ตั้งค่าใหม่ได้ด้วย GEMINI_FALLBACK_MODELS
 const DEFAULT_GEMINI_FALLBACKS = 'gemini-flash-lite-latest';
+// ลดเวลา "คิด" ของ AI (การดึงข้อมูลจากเอกสารไม่ต้องคิดลึก) รุ่นต่างกันใช้พารามิเตอร์ต่างกัน จึงลองตามลำดับ
+// ถ้ารุ่นไหนไม่รับ (400 ที่พูดถึง thinking) จะข้ามไปแบบถัดไป และจำแบบที่ใช้ได้ไว้ ตั้ง GEMINI_THINKING=default เพื่อไม่ส่งเลย
+const THINKING_VARIANTS = [{ thinkingBudget: 0 }, { thinkingLevel: 'minimal' }, null];
+let thinkingIndex = 0;
 const ATTEMPTS_PER_MODEL = 2;
 const RETRY_DELAY_MS = 1_500;
 // ตอบกลับเว็บให้ทันก่อนที่เว็บจะเลิกรอ (เว็บรอ 70 วินาที)
@@ -194,7 +198,20 @@ async function checkLogin(token, scriptUrl) {
   };
 }
 
+/** Warms the login check (cached for a few minutes) so the first reading does not wait for it */
+async function handleVerify(body, scriptUrl, cors) {
+  const token = typeof body.token === 'string' ? body.token : '';
+  if (!token) return fail(401, 'unauthorized', 'กรุณาเข้าสู่ระบบก่อนใช้งาน', cors);
+  try {
+    if (!(await checkLogin(token, scriptUrl))) return fail(401, 'unauthorized', 'เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่', cors);
+  } catch (e) {
+    return fail(e.status || 502, e.code || 'server_error', e.message || 'ตรวจสอบการล็อกอินไม่ได้', cors);
+  }
+  return reply(200, { status: 'success' }, cors);
+}
+
 async function handleExtract(body, env, scriptUrl, cors) {
+  const requestStart = Date.now();
   const files = Array.isArray(body.files) ? body.files : [];
   const token = typeof body.token === 'string' ? body.token : '';
   if (!token) return fail(401, 'unauthorized', 'กรุณาเข้าสู่ระบบก่อนใช้งาน', cors);
@@ -217,6 +234,7 @@ async function handleExtract(body, env, scriptUrl, cors) {
   } catch (e) {
     return fail(e.status || 502, e.code || 'server_error', e.message || 'ตรวจสอบการล็อกอินไม่ได้', cors);
   }
+  const loginMs = Date.now() - requestStart;
 
   const now = Date.now();
   recentExtracts = recentExtracts.filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
@@ -226,7 +244,7 @@ async function handleExtract(body, env, scriptUrl, cors) {
   recentExtracts.push(now);
 
   const today = /^\d{4}-\d{2}-\d{2}$/.test(String(body.today)) ? String(body.today) : new Date().toISOString().slice(0, 10);
-  const payload = {
+  const buildPayload = (thinking) => ({
     contents: [
       {
         role: 'user',
@@ -241,8 +259,9 @@ async function handleExtract(body, env, scriptUrl, cors) {
       responseMimeType: 'application/json',
       responseSchema: EXTRACT_SCHEMA,
       maxOutputTokens: 8192,
+      ...(thinking ? { thinkingConfig: thinking } : {}),
     },
-  };
+  });
 
   const primary = String(env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL).trim();
   const fallbacks = String(env.GEMINI_FALLBACK_MODELS ?? DEFAULT_GEMINI_FALLBACKS)
@@ -251,7 +270,8 @@ async function handleExtract(body, env, scriptUrl, cors) {
     .filter((m) => m && m !== primary);
   const retryDelay = Number(env.GEMINI_RETRY_DELAY_MS ?? RETRY_DELAY_MS);
   const startedAt = Date.now();
-  const bodyText = JSON.stringify(payload);
+  let thinkingAt = env.GEMINI_THINKING === 'default' ? THINKING_VARIANTS.length - 1 : thinkingIndex;
+  let usedModel = '';
 
   let upstream = null;
   let last = null; // { status, detail } of the latest failed attempt, or { timedOut }
@@ -266,7 +286,7 @@ async function handleExtract(body, env, scriptUrl, cors) {
         res = await fetch(`${GEMINI_ENDPOINT}${encodeURIComponent(model)}:generateContent`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-goog-api-key': String(env.GEMINI_API_KEY) },
-          body: bodyText,
+          body: JSON.stringify(buildPayload(THINKING_VARIANTS[thinkingAt])),
           signal: AbortSignal.timeout(Math.min(GEMINI_TIMEOUT_MS, left)),
         });
       } catch (error) {
@@ -275,17 +295,27 @@ async function handleExtract(body, env, scriptUrl, cors) {
       }
       if (res.ok) {
         upstream = res;
+        usedModel = model;
+        if (env.GEMINI_THINKING !== 'default') thinkingIndex = thinkingAt;
         break attempts;
       }
 
       let detail = '';
+      let errorText = '';
       try {
         const err = await res.json();
-        detail = short(err && err.error && (err.error.status || err.error.message), 140) || '';
+        errorText = (err && err.error && err.error.message) || '';
+        detail = short((err && err.error && (err.error.status || err.error.message)) || '', 140) || '';
       } catch {
         // no readable body
       }
       last = { status: res.status, detail };
+      // This model does not take the "think less" setting we tried: use the next form of it, same model
+      if (res.status === 400 && thinkingAt < THINKING_VARIANTS.length - 1 && /think/i.test(errorText)) {
+        thinkingAt++;
+        attempt--;
+        continue;
+      }
       // The key is wrong or not allowed: other models will not help
       if (res.status === 401 || res.status === 403) break attempts;
       // Busy (5xx): try the same model once more. Anything else (quota, unknown model): try the next model.
@@ -329,7 +359,12 @@ async function handleExtract(body, env, scriptUrl, cors) {
   } catch {
     return fail(502, 'server_error', 'AI ตอบกลับรูปแบบที่อ่านไม่ได้ ลองอีกครั้ง', cors);
   }
-  return reply(200, { status: 'success', data: cleanExtraction(data) }, cors);
+  const totalMs = Date.now() - requestStart;
+  return reply(
+    200,
+    { status: 'success', data: { ...cleanExtraction(data), meta: { model: usedModel, loginMs, aiMs: totalMs - loginMs, totalMs } } },
+    cors
+  );
 }
 
 async function handle(request, env = {}) {
@@ -376,6 +411,7 @@ async function handle(request, env = {}) {
     }
     const action = parsed && parsed.action;
     if (action === 'extract') return handleExtract(parsed, env, scriptUrl, cors);
+    if (action === 'verify') return handleVerify(parsed, scriptUrl, cors);
     if (declared > MAX_BODY_BYTES || text.length > MAX_BODY_BYTES) return fail(413, 'bad_request', 'ข้อมูลใหญ่เกินไป', cors);
     if (!POST_ACTIONS.has(action)) return fail(400, 'bad_request', 'ไม่รู้จัก action นี้', cors);
 
