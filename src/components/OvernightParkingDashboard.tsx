@@ -185,7 +185,7 @@ export const OvernightParkingDashboard: React.FC<OvernightParkingDashboardProps>
   const thaiFormattedDate = formatThaiDate(selectedDate, 'long'); // e.g. "6 ตุลาคม 2569"
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-3.5 sm:p-6 space-y-4 sm:space-y-5">
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-3.5 sm:p-4 flex-1 flex flex-col gap-3">
       
       {/* 1. Header Row: สรุปยอดจอดค้างคืน + ตัวเลือกเดือน + ยอดรวมทั้งเดือน */}
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -268,7 +268,7 @@ export const OvernightParkingDashboard: React.FC<OvernightParkingDashboardProps>
       </div>
 
       {/* 3. Detail Container for Selected Day */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-3.5 sm:p-5 shadow-2xs space-y-4">
+      <div className="rounded-2xl border border-slate-200 bg-white p-3.5 sm:p-4 shadow-2xs flex-1 flex flex-col gap-3">
         
         {/* Header row: Day name, Total cars, Floor counts, PDF/Print actions */}
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">

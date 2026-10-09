@@ -442,7 +442,7 @@ export default function App() {
         onOpenChangePassword={() => setIsPasswordModalOpen(true)}
       />
 
-      <main className="flex-1 max-w-[min(90vw,1680px)] w-full mx-auto px-3 sm:px-6 py-5 space-y-4">
+      <main className="flex-1 max-w-[min(90vw,1680px)] w-full mx-auto px-3 sm:px-6 py-2 flex flex-col gap-3">
         {newerVersion && (
           <div role="alert" className="flex flex-wrap items-center gap-2 px-3.5 py-2.5 rounded-xl border border-blue-200 bg-blue-50 text-blue-900 text-xs">
             <RefreshCw className="w-4 h-4 shrink-0" />
@@ -479,13 +479,12 @@ export default function App() {
         />
       </main>
 
-      <footer className="mt-12 bg-white border-t border-slate-200 py-6 text-center text-sm text-slate-500">
+      <footer className="bg-white border-t border-slate-200 py-2.5 text-center text-xs text-slate-500">
         <div className="max-w-[min(90vw,1680px)] mx-auto px-4">
           <p className="font-semibold text-slate-700">รายการขออนุญาตจอดค้างคืน</p>
-          <p className="text-slate-400 mt-1">
+          <p className="text-slate-400">
             สรุปยอดรายวัน · แถบเลือกวันที่ 1-31 · บันทึกขอจอดชั้น B1 และ B2 · ส่งออก PDF / Excel
           </p>
-          <p className="text-slate-300 mt-1 font-mono text-[10px]">เวอร์ชัน {APP_VERSION}</p>
         </div>
       </footer>
 
