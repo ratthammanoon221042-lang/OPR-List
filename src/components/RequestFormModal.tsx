@@ -429,7 +429,6 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
                     if (iso && endDate < iso) setEndDate(iso);
                   }}
                 />
-                <span className="text-xs sm:text-sm text-slate-500 mt-0.5 block">{formatThaiDate(startDate, 'short')}</span>
               </div>
 
               <div className="min-w-0">
@@ -447,7 +446,6 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
                     setAckClash(false);
                   }}
                 />
-                <span className="text-xs sm:text-sm text-slate-500 mt-0.5 block">{formatThaiDate(endDate, 'short')}</span>
               </div>
 
               <div
