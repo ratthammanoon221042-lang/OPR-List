@@ -329,7 +329,7 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
                       className="px-3 py-1 rounded-full bg-slate-100 text-slate-600 border border-slate-300"
                       title={`รุ่น AI: ${prefill.meta.model} · ตรวจสิทธิ์ ${(prefill.meta.loginMs / 1000).toFixed(1)} วิ · AI ${(prefill.meta.aiMs / 1000).toFixed(1)} วิ`}
                     >
-                      อ่านเสร็จใน {(prefill.meta.totalMs / 1000).toFixed(1)} วินาที
+                      อ่านเสร็จใน {(prefill.meta.totalMs / 1000).toFixed(1)} วินาที · AI {(prefill.meta.aiMs / 1000).toFixed(1)} วิ · รุ่น {prefill.meta.model}
                     </span>
                   )}
                   {prefill.datesAssumed && (
