@@ -77,7 +77,6 @@ const VEHICLE_SCHEMA = {
     plate: { type: 'STRING', nullable: true },
     province: { type: 'STRING', nullable: true },
     floor: { type: 'STRING', nullable: true },
-    department: { type: 'STRING', nullable: true },
     startDate: { type: 'STRING', nullable: true },
     endDate: { type: 'STRING', nullable: true },
     uncertain: { type: 'ARRAY', items: { type: 'STRING' } },
@@ -113,7 +112,6 @@ function buildExtractPrompt(today) {
 4. brand: ยี่ห้อเท่านั้น (ไม่ใส่รุ่น) เขียนเป็นชื่อสากลภาษาอังกฤษ เช่น Toyota, Honda, Isuzu, Mazda, Mitsubishi, Nissan, Suzuki, Ford, MG, BYD, Benz (ถ้าเอกสารเป็นภาษาไทยเช่น โตโยต้า ให้แปลงเป็นอังกฤษ) ช่อง "ยี่ห้อ/รุ่น" มักเขียนแบบ "Honda/City", "toyota/yaris", "Benz a200", "Mazda2", "isuzu d-max" ให้เอาเฉพาะยี่ห้อ
    color: สีเป็นภาษาไทยคำสั้น เช่น ขาว ดำ เทา เงิน แดง น้ำเงิน (ไม่ต้องใส่คำว่า "สี") บางตารางไม่มีช่องสี แต่เขียนสีปนมาในช่องยี่ห้อ/รุ่น เช่น "Haval สีดำ", "Honda Jazz (GE สีเทา)" ให้ดึงสีมาใส่ color และเอาเฉพาะยี่ห้อใส่ brand ถ้าไม่มีสีเลยให้ใส่ null
 5. department (ระดับบนสุด) = หน่วยงานที่ขอ ดูจากหัวหนังสือ (ส่วนราชการ) หรือผู้ลงนาม เขียนตามที่ปรากฏ ถ้ามีตัวย่อของหน่วยงานให้ใช้ตัวย่อ subDepartment = หน่วยงานย่อย (กลุ่มงาน/ฝ่าย) ถ้ามี
-   ตารางบางแบบมีคอลัมน์ "สังกัด" หรือ "หน่วยงาน" ของรถแต่ละคัน (เป็นตัวย่อสั้นๆ ที่ต่างกันในแต่ละแถว) ให้ใส่ในช่อง department ของรถคันนั้น เขียนตามตัวย่อที่ปรากฏ ถ้าไม่มีคอลัมน์นี้ให้ใส่ null (ระบบจะใช้หน่วยงานระดับบนสุด)
 6. วันที่ทั้งหมดเป็นรูปแบบ YYYY-MM-DD ปี ค.ศ. เท่านั้น ถ้าเอกสารเป็นปี พ.ศ. ให้ลบ 543 (เช่น 9 ตุลาคม 2569 = 2026-10-09) startDate/endDate ระดับบนสุด = ช่วงวันที่ขอจอดที่ใช้กับรถทั้งหมด ถ้ารถบางคันมีวันที่ต่างออกไปให้ใส่ในรถคันนั้น
    ถ้าเขียนว่าจอดคืนเดียว ให้ endDate = startDate ถ้าเอกสารไม่ระบุวันที่เลย ให้ใส่ null (วันนี้คือ ${today})
 7. floor: "B1" หรือ "B2" เฉพาะเมื่อเอกสารระบุชั้นที่จอด (เช่น "ชั้นใต้ดิน B2", "ชั้น B2") ไม่เช่นนั้นใส่ null ถ้าตารางมีวันที่ของรถแต่ละคัน ให้ใส่ในรถคันนั้น ส่วนวันที่ที่ระบุในเนื้อหาหนังสือ (เช่น "ระหว่างวันที่ 30 กันยายน - 2 ตุลาคม 2569 รวม 3 วัน") ใช้กับรถที่เขียนไว้ในเนื้อหานั้น
@@ -141,7 +139,6 @@ function cleanExtraction(raw) {
       plate: short(v && v.plate, 30),
       province: short(v && v.province, 60),
       floor: short(v && v.floor, 10),
-      department: short(v && v.department, 100),
       startDate: short(v && v.startDate, 10),
       endDate: short(v && v.endDate, 10),
       uncertain: Array.isArray(v && v.uncertain) ? v.uncertain.filter((x) => typeof x === 'string').slice(0, 6) : [],

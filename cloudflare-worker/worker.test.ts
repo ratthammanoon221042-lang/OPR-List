@@ -438,19 +438,13 @@ describe('extract (read cars from photos)', () => {
     expect(sent[1].mediaResolution).toBeUndefined();
   });
 
-  it('passes the per-car department (the "สังกัด" column) through', async () => {
-    vi.stubGlobal('fetch', upstream({ gemini: new Response(JSON.stringify(geminiAnswer({ vehicles: [{ kind: 'car', plate: '1กก1', department: 'สปน.' }] })), { status: 200 }) }));
-    const res = await extract();
-    expect((await res.json()).data.vehicles[0].department).toBe('สปน.');
-  });
-
-  it('the prompt covers rotated pages, per-car department, colour inside the model text and plates with spaces', async () => {
+  it('the prompt covers rotated pages, colour inside the model text and plates with spaces', async () => {
     const fetchMock = upstream();
     vi.stubGlobal('fetch', fetchMock);
     await extract();
     const call = fetchMock.mock.calls.find(([u]) => String(u).startsWith(GEMINI));
     const prompt = JSON.parse(call?.[1].body).contents[0].parts[0].text;
-    for (const needle of ['หมุนข้าง 90°', 'สังกัด', 'Haval สีดำ', '7 กม 374']) expect(prompt).toContain(needle);
+    for (const needle of ['หมุนข้าง 90°', 'Haval สีดำ', '7 กม 374']) expect(prompt).toContain(needle);
   });
 
   it('verify warms the login check without reading anything', async () => {

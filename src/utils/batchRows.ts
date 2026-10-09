@@ -18,8 +18,6 @@ export interface DraftRow {
   plate: string;
   province: string;
   floor: 'B1' | 'B2';
-  /** Own department, only when it differs from the one shared by the whole batch ('' = use the shared one) */
-  department?: string;
   /** Own dates, only when they differ from the dates shared by the whole batch */
   startDate?: string;
   endDate?: string;
@@ -84,7 +82,7 @@ export function buildPermits(rows: DraftRow[], common: BatchCommon, now = new Da
         vehicleBrand: r.brand.trim(),
         vehicleColor: r.color.trim(),
         parkingFloor: r.floor,
-        department: (r.department ?? '').trim() || common.department.trim() || undefined,
+        department: common.department.trim() || undefined,
         subDepartment: common.subDepartment.trim() || undefined,
         startDate,
         endDate,
@@ -235,8 +233,6 @@ export interface ExtractedVehicle {
   plate?: string | null;
   province?: string | null;
   floor?: string | null;
-  /** The car's own department (a "สังกัด" column), when the table has one */
-  department?: string | null;
   startDate?: string | null;
   endDate?: string | null;
   uncertain?: string[] | null;
@@ -306,12 +302,8 @@ const UNCERTAIN_FIELDS: RowField[] = ['brand', 'color', 'plate', 'province', 'fl
  */
 export function draftFromExtraction(doc: ExtractedDocument, fallbackDate: string): ImportDraft {
   const skipped: SkippedVehicle[] = [];
-  const items: Array<{ row: DraftRow; start: string; end: string; dept: string }> = [];
-  const departmentName = (raw: string): string => {
-    const d = normalizeDepartment(raw);
-    return d.select === 'อื่นๆ' ? d.custom : d.select;
-  };
-  const docDept = departmentName(str(doc.department));
+  const items: Array<{ row: DraftRow; start: string; end: string }> = [];
+  const docDept = ((d) => (d.select === 'อื่นๆ' ? d.custom : d.select))(normalizeDepartment(str(doc.department)));
   const docStart = isoOrEmpty(doc.startDate);
   const docEnd = isoOrEmpty(doc.endDate);
 
@@ -347,7 +339,6 @@ export function draftFromExtraction(doc: ExtractedDocument, fallbackDate: string
       row: newRow({ brand, color, plate, province, floor, flags: [...flags] }),
       start,
       end: end && start && end < start ? start : end,
-      dept: (str(v.department) ? departmentName(str(v.department)) : '') || docDept,
     });
   }
 
@@ -374,25 +365,10 @@ export function draftFromExtraction(doc: ExtractedDocument, fallbackDate: string
     }
   });
 
-  // Same for the department: the one most cars have is shared, the others keep their own ("สังกัด" column)
-  const deptTally = new Map<string, number>();
-  items.forEach(({ dept }) => deptTally.set(dept, (deptTally.get(dept) ?? 0) + 1));
-  let commonDept = docDept;
-  let bestDept = 0;
-  deptTally.forEach((count, d) => {
-    if (count > bestDept || (count === bestDept && d === docDept)) {
-      bestDept = count;
-      commonDept = d;
-    }
-  });
-  items.forEach(({ row, dept }) => {
-    if (dept && dept !== commonDept) row.department = dept;
-  });
-
   return {
     rows: items.map((i) => i.row),
     common: {
-      department: commonDept,
+      department: docDept,
       subDepartment: str(doc.subDepartment),
       startDate: commonStart,
       endDate: commonEnd || commonStart,
