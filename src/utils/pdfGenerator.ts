@@ -74,7 +74,7 @@ function drawPage(
   firstIndex: number,
   pageNo: number,
   pageCount: number,
-  summary: { total: number; b1: number; b2: number; dateText: string; asOfText: string }
+  summary: { total: number; b1: number; b2: number; noFloor: number; dateText: string; asOfText: string }
 ): void {
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, PAGE_W, PAGE_H);
@@ -93,7 +93,7 @@ function drawPage(
     ctx.font = `bold 16px ${FONT}`;
     ctx.fillStyle = '#1e40af';
     ctx.fillText(
-      `รวมทั้งหมด ${summary.total} คัน   |   ชั้น B1: ${summary.b1} คัน   |   ชั้น B2: ${summary.b2} คัน`,
+      `รวมทั้งหมด ${summary.total} คัน   |   ชั้น B1: ${summary.b1} คัน   |   ชั้น B2: ${summary.b2} คัน${summary.noFloor > 0 ? `   |   ไม่ระบุชั้น: ${summary.noFloor} คัน` : ''}`,
       PAGE_W / 2,
       190
     );
@@ -179,10 +179,10 @@ function drawPage(
         },
         { text: permit.province || '-', align: 'center', font: `15px ${FONT}`, color: '#0f172a' },
         {
-          text: permit.parkingFloor,
+          text: permit.parkingFloor || '-',
           align: 'center',
           font: `bold 17px ${FONT}`,
-          color: permit.parkingFloor === 'B1' ? '#1d4ed8' : '#4338ca',
+          color: permit.parkingFloor === 'B1' ? '#1d4ed8' : permit.parkingFloor === 'B2' ? '#4338ca' : '#64748b',
         },
         {
           text: `${formatThaiDate(permit.startDate, 'short')} - ${formatThaiDate(permit.endDate, 'short')}`,
@@ -238,6 +238,7 @@ export async function renderReportPages(
     total: permits.length,
     b1: permits.filter((p) => p.parkingFloor === 'B1').length,
     b2: permits.filter((p) => p.parkingFloor === 'B2').length,
+    noFloor: permits.filter((p) => !p.parkingFloor).length,
     dateText: formatThaiDate(targetDate, 'long'),
     asOfText: dataAsOf ? ` · ข้อมูล ณ ${formatThaiDateTime(dataAsOf)}` : '',
   };

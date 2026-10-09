@@ -1,4 +1,4 @@
-import { ParkingPermit } from '../types/parking';
+import { ParkingFloor, ParkingPermit } from '../types/parking';
 import { DEPARTMENTS, PROVINCE_OPTIONS, VEHICLE_BRANDS, VEHICLE_COLORS } from './constants';
 import { dateRangesOverlap, isIsoDate } from './dateUtils';
 import { cleanPlate, generatePermitId } from './permit';
@@ -17,7 +17,7 @@ export interface DraftRow {
   color: string;
   plate: string;
   province: string;
-  floor: 'B1' | 'B2';
+  floor: ParkingFloor;
   /** Own dates, only when they differ from the dates shared by the whole batch */
   startDate?: string;
   endDate?: string;
@@ -41,7 +41,7 @@ export const newRow = (over: Partial<DraftRow> = {}): DraftRow => ({
   color: '',
   plate: '',
   province: '',
-  floor: 'B1',
+  floor: '',
   flags: [],
   ...over,
 });
@@ -332,8 +332,9 @@ export function draftFromExtraction(doc: ExtractedDocument, fallbackDate: string
     // The province is optional: left empty when the document gives none; a written one that is no province is flagged
     const province = normalizeProvince(str(v.province));
     if (str(v.province) && !province) flags.add('province');
-    if (!str(v.floor)) flags.add('floor');
-    const floor: 'B1' | 'B2' = /B\s*2|ชั้น\s*2|^2$/i.test(str(v.floor)) ? 'B2' : 'B1';
+    // The floor is optional: empty when the document gives none
+    const floor: ParkingFloor = /B\s*2|ชั้น\s*2|^2$/i.test(str(v.floor)) ? 'B2' : /B\s*1|ชั้น\s*1|^1$/i.test(str(v.floor)) ? 'B1' : '';
+    if (!floor) flags.delete('floor');
 
     const start = isoOrEmpty(v.startDate) || docStart;
     const end = isoOrEmpty(v.endDate) || docEnd || start;

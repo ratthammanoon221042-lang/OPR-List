@@ -555,7 +555,7 @@ export default function App() {
         itemDetails={permitToDelete ? [
           { label: 'หมายเลขทะเบียน', value: permitToDelete.province ? `${permitToDelete.licensePlate} (${permitToDelete.province})` : permitToDelete.licensePlate },
           { label: 'ยี่ห้อ / สี', value: `${permitToDelete.vehicleBrand || '-'}${permitToDelete.vehicleColor ? ` สี${permitToDelete.vehicleColor}` : ''}` },
-          { label: 'ชั้นที่ขอจอด', value: `ชั้น ${permitToDelete.parkingFloor}` },
+          { label: 'ชั้นที่ขอจอด', value: permitToDelete.parkingFloor ? `ชั้น ${permitToDelete.parkingFloor}` : 'ไม่ระบุ' },
           { label: 'ช่วงวันที่ขอจอด', value: `${formatThaiDate(permitToDelete.startDate, 'short')} - ${formatThaiDate(permitToDelete.endDate, 'short')}` },
         ] : []}
         confirmText="ยืนยันการลบ"

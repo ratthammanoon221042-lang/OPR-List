@@ -34,6 +34,7 @@ const SecurityChecklist: React.FC<Omit<SecurityChecklistModalProps, 'isOpen'>> =
   const activePermits = permits.filter(p => isPermitActiveOnDate(p, targetDate));
   const b1Count = activePermits.filter(p => p.parkingFloor === 'B1').length;
   const b2Count = activePermits.filter(p => p.parkingFloor === 'B2').length;
+  const noFloorCount = activePermits.length - b1Count - b2Count;
 
   // 100% Reliable Client-Side PDF Download
   const handleDownloadPDF = async () => {
@@ -157,6 +158,12 @@ const SecurityChecklist: React.FC<Omit<SecurityChecklistModalProps, 'isOpen'>> =
             <span className="text-blue-700 font-semibold">ชั้น B1: {b1Count} คัน</span>
             <span className="text-slate-300">·</span>
             <span className="text-indigo-700 font-semibold">ชั้น B2: {b2Count} คัน</span>
+            {noFloorCount > 0 && (
+              <>
+                <span className="text-slate-300">·</span>
+                <span className="text-slate-600 font-semibold">ไม่ระบุชั้น: {noFloorCount} คัน</span>
+              </>
+            )}
           </div>
         </div>
 
@@ -219,7 +226,7 @@ const SecurityChecklist: React.FC<Omit<SecurityChecklistModalProps, 'isOpen'>> =
                         {permit.province || '-'}
                       </td>
                       <td className="py-2.5 px-3 border border-slate-300 text-center font-bold text-blue-700">
-                        {permit.parkingFloor}
+                        {permit.parkingFloor || '-'}
                       </td>
                       <td className="py-2.5 px-3 border border-slate-300 text-center text-slate-600 whitespace-nowrap text-xs font-mono">
                         {formatThaiDate(permit.startDate, 'short')} - {formatThaiDate(permit.endDate, 'short')}

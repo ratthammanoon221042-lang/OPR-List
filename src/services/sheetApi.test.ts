@@ -82,6 +82,8 @@ describe('optional colour', () => {
     expect(JSON.parse(fetchMock.mock.calls[2][1].body).permit.vehicleBrand).toBe('-');
     await addPermit('tok', { ...permit, province: '' });
     expect(JSON.parse(fetchMock.mock.calls[3][1].body).permit.province).toBe('-');
+    await addPermit('tok', { ...permit, parkingFloor: '' });
+    expect(JSON.parse(fetchMock.mock.calls[4][1].body).permit.parkingFloor).toBe('-');
   });
 });
 

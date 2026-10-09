@@ -88,7 +88,7 @@ describe('buildPermits', () => {
       subDepartment: 'กองกลาง',
       startDate: '2026-10-09',
       endDate: '2026-10-10',
-      parkingFloor: 'B1',
+      parkingFloor: '', // no floor chosen: it is optional
       createdAt: '2026-10-09T03:00:00.000Z',
     });
     expect(permits[1]).toMatchObject({ vehicleBrand: 'Honda', parkingFloor: 'B2' });
@@ -182,7 +182,9 @@ describe('draftFromExtraction', () => {
     expect(draft.skipped[0].reason).toContain('มอเตอร์ไซค์');
     expect(draft.rows[0]).toMatchObject({ brand: 'Toyota', color: 'ขาว', plate: '1กก1234', province: 'กรุงเทพมหานคร', floor: 'B2' });
     expect(draft.rows[0].flags).toEqual([]);
-    expect(draft.rows[1].flags).toEqual(expect.arrayContaining(['type', 'plate', 'floor']));
+    expect(draft.rows[1].flags).toEqual(expect.arrayContaining(['type', 'plate']));
+    expect(draft.rows[1].floor).toBe(''); // the document names no floor: left empty, not guessed
+    expect(draft.rows[1].flags).not.toContain('floor');
   });
 
   it('takes department and dates from the document', () => {

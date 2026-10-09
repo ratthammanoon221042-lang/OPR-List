@@ -235,6 +235,16 @@ describe('Code.gs', () => {
   });
 
   describe('data', () => {
+    it('the floor is optional: stored as "-" and read back as empty; other values are refused', () => {
+      expect(t.post({ action: 'add', token, permit: permit({ id: 'PK-NF', parkingFloor: '' }) }).status).toBe('success');
+      expect(t.post({ action: 'add', token, permit: permit({ id: 'PK-NF2', parkingFloor: '-' }) }).status).toBe('success');
+      expect(t.post({ action: 'add', token, permit: permit({ id: 'PK-F2', parkingFloor: 'B2' }) }).status).toBe('success');
+      expect(t.list().data.map((r: { parkingFloor: string }) => r.parkingFloor)).toEqual(['', '', 'B2']);
+      const [sheet] = [...t.sheets.values()];
+      expect(sheet.data[1][3]).toBe('-');
+      expect(t.post({ action: 'add', token, permit: permit({ id: 'PK-F3', parkingFloor: 'B3' }) })).toMatchObject({ code: 'bad_request' });
+    });
+
     it('the province is optional: stored as "-" and read back as empty (no longer turned into Bangkok)', () => {
       expect(t.post({ action: 'add', token, permit: permit({ id: 'PK-NP', province: '' }) }).status).toBe('success');
       expect(t.post({ action: 'add', token, permit: permit({ id: 'PK-NP2', province: '-' }) }).status).toBe('success');

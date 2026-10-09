@@ -40,7 +40,9 @@ describe('normalizePermit', () => {
     ['2', 'B2'],
     ['B1', 'B1'],
     ['ชั้น B1', 'B1'],
-    ['', 'B1'],
+    ['', ''], // not given: the floor is optional
+    ['-', ''],
+    ['ไม่ระบุ', ''],
     ['B12', 'B1'], // a "2" somewhere inside must not flip it to B2
   ])('floor %j -> %s', (input, expected) => {
     expect(normalizePermit({ ...base, parkingFloor: input }).parkingFloor).toBe(expected);

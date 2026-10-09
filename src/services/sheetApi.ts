@@ -232,13 +232,14 @@ export async function changePassword(
   return String(json.token);
 }
 
-/** Brand, colour and province are optional in the app; the sheet (and an older Code.gs that still requires them) gets '-' for none */
+/** Brand, colour, province and floor are optional in the app; the sheet (and an older Code.gs that still requires them) gets '-' for none */
 const toWire = (permit: ParkingPermit): ParkingPermit => ({
   ...permit,
   vehicleBrand: permit.vehicleBrand.trim() || '-',
   vehicleColor: permit.vehicleColor.trim() || '-',
   province: permit.province.trim() || '-',
-});
+  parkingFloor: permit.parkingFloor || '-',
+} as ParkingPermit);
 
 // Every write answers with the complete, up-to-date list, so no second request is needed.
 export const addPermit = async (token: string, permit: ParkingPermit) =>

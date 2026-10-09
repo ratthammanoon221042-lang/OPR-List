@@ -39,7 +39,7 @@ export const OvernightParkingDashboard: React.FC<OvernightParkingDashboardProps>
   const [trackedDate, setTrackedDate] = useState(selectedDate);
   const [isExporting, setIsExporting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [floorFilter, setFloorFilter] = useState<'all' | 'B1' | 'B2'>('all');
+  const [floorFilter, setFloorFilter] = useState<'all' | 'B1' | 'B2' | 'none'>('all');
   const [showSavedAt, setShowSavedAt] = useState(loadShowSavedAt);
 
   const toggleSavedAt = () => {
@@ -97,6 +97,7 @@ export const OvernightParkingDashboard: React.FC<OvernightParkingDashboardProps>
         count: dayPermits.length,
         b1Count: b1,
         b2Count: b2,
+        noFloorCount: dayPermits.length - b1 - b2,
         permits: dayPermits,
       };
     });
@@ -115,6 +116,7 @@ export const OvernightParkingDashboard: React.FC<OvernightParkingDashboardProps>
       count: permits.filter(p => isPermitActiveOnDate(p, selectedDate)).length,
       b1Count: permits.filter(p => isPermitActiveOnDate(p, selectedDate) && p.parkingFloor === 'B1').length,
       b2Count: permits.filter(p => isPermitActiveOnDate(p, selectedDate) && p.parkingFloor === 'B2').length,
+      noFloorCount: permits.filter(p => isPermitActiveOnDate(p, selectedDate) && !p.parkingFloor).length,
       permits: permits.filter(p => isPermitActiveOnDate(p, selectedDate)),
     };
   }, [dayStats, selectedDate, permits]);
@@ -122,7 +124,7 @@ export const OvernightParkingDashboard: React.FC<OvernightParkingDashboardProps>
   // Filtered permits for the selected day based on search query & floor filter
   const displayedPermits = useMemo(() => {
     return currentDayStat.permits.filter(p => {
-      if (floorFilter !== 'all' && p.parkingFloor !== floorFilter) {
+      if (floorFilter !== 'all' && p.parkingFloor !== (floorFilter === 'none' ? '' : floorFilter)) {
         return false;
       }
       if (searchQuery.trim()) {
@@ -242,7 +244,7 @@ export const OvernightParkingDashboard: React.FC<OvernightParkingDashboardProps>
                     d.count,
                     isSelected
                   )}`}
-                  title={`วันที่ ${d.dayNum} ${thaiMonthNames[currentMonth - 1]}: ขอจอด ${d.count} คัน (B1: ${d.b1Count}, B2: ${d.b2Count})`}
+                  title={`วันที่ ${d.dayNum} ${thaiMonthNames[currentMonth - 1]}: ขอจอด ${d.count} คัน (B1: ${d.b1Count}, B2: ${d.b2Count}${d.noFloorCount ? `, ไม่ระบุชั้น: ${d.noFloorCount}` : ''})`}
                 >
                   {/* REQUIREMENT 3: มีแค่ตัวเลขวันที่ก็พอ ไม่ต้องมีตัวเลขจำนวนรถ */}
                   <span className="leading-none">{d.dayNum}</span>
@@ -286,6 +288,11 @@ export const OvernightParkingDashboard: React.FC<OvernightParkingDashboardProps>
                 <span className="px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 font-bold border border-indigo-200">
                   ชั้น B2: {currentDayStat.b2Count} คัน
                 </span>
+                {currentDayStat.noFloorCount > 0 && (
+                  <span className="px-2.5 py-1 rounded-md bg-slate-100 text-slate-600 font-bold border border-slate-300">
+                    ไม่ระบุชั้น: {currentDayStat.noFloorCount} คัน
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -374,6 +381,19 @@ export const OvernightParkingDashboard: React.FC<OvernightParkingDashboardProps>
               >
                 ชั้น B2 ({currentDayStat.b2Count})
               </button>
+              {(currentDayStat.noFloorCount > 0 || floorFilter === 'none') && (
+                <button
+                  type="button"
+                  onClick={() => setFloorFilter('none')}
+                  className={`px-3 py-1.5 rounded-md font-medium transition-colors cursor-pointer ${
+                    floorFilter === 'none'
+                      ? 'bg-slate-600 text-white shadow-2xs font-bold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  ไม่ระบุชั้น ({currentDayStat.noFloorCount})
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -468,15 +488,19 @@ export const OvernightParkingDashboard: React.FC<OvernightParkingDashboardProps>
 
                       {/* 7. ชั้นที่จอด: B1 หรือ B2 */}
                       <td className="py-3.5 px-2.5 text-center">
-                        <span
-                          className={`inline-block px-2.5 py-0.5 rounded-md font-bold text-sm ${
-                            permit.parkingFloor === 'B1'
-                              ? 'bg-blue-100 text-blue-800 border border-blue-200'
-                              : 'bg-indigo-100 text-indigo-800 border border-indigo-200'
-                          }`}
-                        >
-                          {permit.parkingFloor}
-                        </span>
+                        {permit.parkingFloor ? (
+                          <span
+                            className={`inline-block px-2.5 py-0.5 rounded-md font-bold text-sm ${
+                              permit.parkingFloor === 'B1'
+                                ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                                : 'bg-indigo-100 text-indigo-800 border border-indigo-200'
+                            }`}
+                          >
+                            {permit.parkingFloor}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">-</span>
+                        )}
                       </td>
 
                       {/* 8. วันที่ขอจอด */}
@@ -573,15 +597,17 @@ export const OvernightParkingDashboard: React.FC<OvernightParkingDashboardProps>
                     </div>
 
                     {/* ชั้นที่จอด: B1 หรือ B2 */}
-                    <span
-                      className={`px-2 py-0.5 rounded-md font-bold text-sm ${
-                        permit.parkingFloor === 'B1'
-                          ? 'bg-blue-100 text-blue-800 border border-blue-200'
-                          : 'bg-indigo-100 text-indigo-800 border border-indigo-200'
-                      }`}
-                    >
-                      ชั้น {permit.parkingFloor}
-                    </span>
+                    {permit.parkingFloor && (
+                      <span
+                        className={`px-2 py-0.5 rounded-md font-bold text-sm ${
+                          permit.parkingFloor === 'B1'
+                            ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                            : 'bg-indigo-100 text-indigo-800 border border-indigo-200'
+                        }`}
+                      >
+                        ชั้น {permit.parkingFloor}
+                      </span>
+                    )}
                   </div>
 
                   {/* Middle Line: ทะเบียน & จังหวัด (ตัวปกติ ไม่ใส่กรอบสีดำ ฟอนต์เดียวกับยี่ห้อ) */}

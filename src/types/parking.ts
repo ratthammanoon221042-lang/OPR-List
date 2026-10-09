@@ -1,3 +1,5 @@
+export type ParkingFloor = 'B1' | 'B2' | ''; // '' = ไม่ระบุชั้น
+
 export interface ParkingPermit {
   id: string; // e.g. PK-20261006-001
   createdAt: string; // ISO string
@@ -5,7 +7,7 @@ export interface ParkingPermit {
   province: string; // จังหวัด (เช่น กรุงเทพมหานคร, นนทบุรี, ปทุมธานี)
   vehicleBrand: string; // ยี่ห้อรถ
   vehicleColor: string; // สีรถ
-  parkingFloor: 'B1' | 'B2'; // ชั้นที่ขอจอด: B1 หรือ B2 เท่านั้น
+  parkingFloor: ParkingFloor; // ชั้นที่ขอจอด: B1, B2 หรือว่าง (ไม่ระบุ)
   department?: string; // หน่วยงาน (ถ้ามี)
   subDepartment?: string; // หน่วยงานย่อย (ไม่บังคับ)
   startDate: string; // YYYY-MM-DD

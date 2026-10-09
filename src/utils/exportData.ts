@@ -22,7 +22,7 @@ export function permitToExportRow(permit: ParkingPermit, index: number): (string
     permit.subDepartment || '-',
     permit.licensePlate.replace(/\s+/g, ''),
     permit.province || '-',
-    permit.parkingFloor,
+    permit.parkingFloor || '-',
     `${formatThaiDate(permit.startDate, 'short')} - ${formatThaiDate(permit.endDate, 'short')}`,
   ];
 }

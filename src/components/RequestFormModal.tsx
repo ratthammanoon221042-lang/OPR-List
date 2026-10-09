@@ -169,7 +169,7 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
   };
 
   const addRow = (focus = true) => {
-    const row = newRow({ floor: rows[rows.length - 1]?.floor ?? 'B1' });
+    const row = newRow({ floor: rows[rows.length - 1]?.floor ?? '' });
     if (focus) pendingFocus.current = row.key;
     setRows((prev) => [...prev, row]);
   };
@@ -381,7 +381,7 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
                 )}
                 {prefill.notes && <p className="text-sm text-slate-500">หมายเหตุจากระบบอ่านเอกสาร: {prefill.notes}</p>}
                 <p className="text-sm text-slate-500">
-                  ระบบยังไม่ได้บันทึกอะไร ตรวจและแก้ไขข้อมูลให้ถูกต้องก่อนกดบันทึก ชั้นที่จอดตั้งต้นเป็น B1 ถ้าเอกสารไม่ระบุ
+                  ระบบยังไม่ได้บันทึกอะไร ตรวจและแก้ไขข้อมูลให้ถูกต้องก่อนกดบันทึก ถ้าเอกสารไม่ระบุชั้นที่จอด จะเว้นว่างไว้
                 </p>
               </div>
             )}
@@ -510,7 +510,7 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
                 <span>สี <span className="font-normal text-slate-400">(ไม่บังคับ)</span></span>
                 <span>ทะเบียน <span className="text-rose-500">*</span> <span className="font-normal text-slate-400">(ติดกัน)</span></span>
                 <span>จังหวัด <span className="font-normal text-slate-400">(ไม่บังคับ)</span></span>
-                <span>ชั้นที่จอด <span className="text-rose-500">*</span></span>
+                <span>ชั้นที่จอด <span className="font-normal text-slate-400">(ไม่บังคับ)</span></span>
                 <span />
               </div>
 
@@ -626,7 +626,7 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
                         {clash && (
                           <span className="block mt-1 text-sm text-rose-700">
                             {clash.existing.length > 0
-                              ? `ซ้ำ: ขอไว้แล้ว ${formatThaiDate(clash.existing[0].startDate, 'short')} - ${formatThaiDate(clash.existing[0].endDate, 'short')} (ชั้น ${clash.existing[0].parkingFloor})`
+                              ? `ซ้ำ: ขอไว้แล้ว ${formatThaiDate(clash.existing[0].startDate, 'short')} - ${formatThaiDate(clash.existing[0].endDate, 'short')} ${clash.existing[0].parkingFloor ? ` (ชั้น ${clash.existing[0].parkingFloor})` : ''}`
                               : 'ซ้ำกับแถวอื่นในชุดนี้'}
                           </span>
                         )}
@@ -644,7 +644,8 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
                             key={f}
                             type="button"
                             aria-pressed={row.floor === f}
-                            onClick={() => changeRow(row.key, { floor: f }, ['floor'])}
+                            onClick={() => changeRow(row.key, { floor: row.floor === f ? '' : f }, ['floor'])}
+                            title={row.floor === f ? 'กดซ้ำเพื่อยกเลิกการเลือก' : `ชั้น ${f}`}
                             className={`flex-1 px-5 py-2.5 text-base font-bold cursor-pointer transition-colors ${
                               row.floor === f
                                 ? f === 'B1'

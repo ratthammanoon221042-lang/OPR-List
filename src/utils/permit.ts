@@ -1,4 +1,4 @@
-import { ParkingPermit } from '../types/parking';
+import { ParkingFloor, ParkingPermit } from '../types/parking';
 import { THAI_PROVINCES } from './constants';
 import { dateRangesOverlap, getTodayDateString, parseFlexibleDate } from './dateUtils';
 
@@ -10,7 +10,7 @@ const text = (value: unknown): string => (typeof value === 'string' ? value.trim
  * Normalizes a permit to guarantee:
  * 1. licensePlate has NO spaces (written connected)
  * 2. province is separated from the plate
- * 3. parkingFloor is strictly 'B1' or 'B2'
+ * 3. parkingFloor is 'B1', 'B2' or '' (not given)
  * 4. dates are YYYY-MM-DD and endDate >= startDate
  */
 export function normalizePermit(raw: RawPermit): ParkingPermit {
@@ -39,7 +39,7 @@ export function normalizePermit(raw: RawPermit): ParkingPermit {
   if (province === '-') province = '';
 
   const floorText = text(raw.parkingFloor);
-  const floor: 'B1' | 'B2' = /B\s*2|ชั้น\s*2|^2$/i.test(floorText) ? 'B2' : 'B1';
+  const floor: ParkingFloor = /B\s*2|ชั้น\s*2|^2$/i.test(floorText) ? 'B2' : /B\s*1|ชั้น\s*1|^1$/i.test(floorText) ? 'B1' : '';
 
   const startDate = parseFlexibleDate(raw.startDate) || getTodayDateString();
   let endDate = parseFlexibleDate(raw.endDate) || startDate;

@@ -371,7 +371,7 @@ function validatePermit_(raw) {
     createdAt: clean_(raw.createdAt, 40) || new Date().toISOString(),
     licensePlate: clean_(raw.licensePlate, 20).replace(/\s+/g, ''),
     province: clean_(raw.province, 60),
-    parkingFloor: raw.parkingFloor === 'B2' ? 'B2' : raw.parkingFloor === 'B1' ? 'B1' : '',
+    parkingFloor: clean_(raw.parkingFloor, 10),
     vehicleBrand: clean_(raw.vehicleBrand, 60),
     vehicleColor: clean_(raw.vehicleColor, 40),
     department: clean_(raw.department, 100),
@@ -382,7 +382,11 @@ function validatePermit_(raw) {
 
   if (!p.id) return { error: 'ไม่มีรหัสอ้างอิง' };
   if (!p.licensePlate) return { error: 'กรุณาระบุหมายเลขทะเบียน' };
-  if (!p.parkingFloor) return { error: 'ชั้นที่ขอจอดต้องเป็น B1 หรือ B2' };
+  // ชั้นที่จอดไม่บังคับ: ว่างหรือ '-' = ไม่ระบุ นอกนั้นต้องเป็น B1 หรือ B2
+  if (p.parkingFloor === '-') p.parkingFloor = '';
+  if (p.parkingFloor && p.parkingFloor !== 'B1' && p.parkingFloor !== 'B2') {
+    return { error: 'ชั้นที่ขอจอดต้องเป็น B1 หรือ B2 (หรือเว้นว่าง)' };
+  }
   if (!isIsoDate_(p.startDate) || !isIsoDate_(p.endDate)) return { error: 'รูปแบบวันที่ต้องเป็น YYYY-MM-DD' };
   if (p.endDate < p.startDate) return { error: 'วันที่สิ้นสุดต้องไม่น้อยกว่าวันที่เริ่มจอด' };
   return { value: p };
@@ -450,7 +454,7 @@ function writeRow_(sheet, rowNumber, p) {
     p.id,
     p.licensePlate,
     p.province || '-',
-    p.parkingFloor,
+    p.parkingFloor || '-',
     p.vehicleBrand || '-',
     p.vehicleColor || '-',
     p.department || '-',
@@ -529,7 +533,7 @@ function readAllPermits_(sheet) {
       id: String(row[0] || 'PK-ROW-' + (i + 2)),
       licensePlate: String(row[1] || '').replace(/\s+/g, ''),
       province: row[2] && row[2] !== '-' ? String(row[2]) : '',
-      parkingFloor: String(row[3]).indexOf('2') !== -1 ? 'B2' : 'B1',
+      parkingFloor: floorFromCell_(row[3]),
       vehicleBrand: row[4] && row[4] !== '-' ? String(row[4]) : '',
       vehicleColor: row[5] && row[5] !== '-' ? String(row[5]) : '',
       department: row[6] && row[6] !== '-' ? String(row[6]) : '',
@@ -540,6 +544,14 @@ function readAllPermits_(sheet) {
     });
   }
   return list;
+}
+
+/** ชั้นที่จอดจากเซลล์: มี 2 = B2, มี 1 = B1, ว่างหรือ '-' = ไม่ระบุ */
+function floorFromCell_(value) {
+  var text = String(value || '');
+  if (text.indexOf('2') !== -1) return 'B2';
+  if (text.indexOf('1') !== -1) return 'B1';
+  return '';
 }
 
 /** แปลงค่าในเซลล์วันที่เป็น YYYY-MM-DD (รองรับข้อมูลเก่าที่ชีตแปลงเป็นวันที่ หรือเป็น dd/mm/yyyy แบบ พ.ศ.) */
