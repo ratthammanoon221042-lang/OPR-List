@@ -114,6 +114,10 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
   const [errorMsg, setErrorMsg] = useState('');
   // The user has seen the "already requested" warning and chose to save anyway; any edit withdraws it
   const [ackClash, setAckClash] = useState(false);
+  // After saving, the form stays open and ready for the next car: this note says what was just saved
+  const [savedNote, setSavedNote] = useState('');
+  const [showPrefill, setShowPrefill] = useState(true);
+  const [focusNonce, setFocusNonce] = useState(0);
 
   const common: BatchCommon = {
     department: department === 'อื่นๆ' ? customDepartment : department,
@@ -146,9 +150,15 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
     pendingFocus.current = null;
   }, [rows.length]);
 
+  // Back to the first cell after a save (the rows were cleared, so their count may not have changed)
+  useEffect(() => {
+    if (focusNonce > 0) document.querySelector<HTMLElement>('[data-cell^="brand-"]')?.focus();
+  }, [focusNonce]);
+
   const changeRow = (key: string, patch: Partial<DraftRow>, changed: RowField[] = []) => {
     setAckClash(false);
     setErrorMsg('');
+    setSavedNote('');
     setRows((prev) =>
       prev.map((r) => {
         if (r.key !== key) return r;
@@ -236,10 +246,19 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
         endDate,
       };
       onSubmit([permit]);
-    } else {
-      onSubmit(buildPermits(rows, common));
+      onClose();
+      return;
     }
-    onClose();
+
+    const built = buildPermits(rows, common);
+    onSubmit(built);
+    // Stay open for the next car: clear the cars, keep the department and dates (the same document goes on)
+    setRows([newRow()]);
+    setErrorMsg('');
+    setAckClash(false);
+    setShowPrefill(false);
+    setSavedNote(`บันทึก ${built.length} รายการแล้ว (ผลการบันทึกแจ้งที่มุมจอ) กรอกคันถัดไปได้เลย`);
+    setFocusNonce((n) => n + 1);
   };
 
   const showImport = !isEdit && !!onOpenImport;
@@ -311,7 +330,14 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
               </div>
             )}
 
-            {prefill && !isEdit && (
+            {savedNote && (
+              <div role="status" className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-800 text-base rounded-xl flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-600" />
+                <span>{savedNote}</span>
+              </div>
+            )}
+
+            {prefill && showPrefill && !isEdit && (
               <div className="space-y-2.5">
                 <div className="flex flex-wrap items-center gap-2 text-base">
                   <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300">

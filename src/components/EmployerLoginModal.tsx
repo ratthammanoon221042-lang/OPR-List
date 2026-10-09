@@ -147,7 +147,7 @@ export const EmployerLoginModal: React.FC<EmployerLoginModalProps> = ({ isOpen, 
               </button>
               {busy && slow && (
                 <p className="text-[11px] text-slate-500 text-center">
-                  Google Sheet กำลังเริ่มทำงาน ครั้งแรกอาจใช้เวลาสักครู่ กรุณารอ
+                  ระบบกำลังเริ่มทำงาน ครั้งแรกอาจใช้เวลาสักครู่ กรุณารอ
                 </p>
               )}
             </form>

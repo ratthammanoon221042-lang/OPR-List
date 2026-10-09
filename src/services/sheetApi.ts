@@ -117,7 +117,7 @@ async function request(url: string, init?: RequestInit, timeoutMs = REQUEST_TIME
     if (!res.ok) {
       throw new ApiError(
         'server_error',
-        `Google Sheet ตอบกลับผิดปกติ (HTTP ${res.status})${res.status === 404 ? setupHint() : ''}`,
+        `เซิร์ฟเวอร์ตอบกลับผิดปกติ (HTTP ${res.status})${res.status === 404 ? setupHint() : ''}`,
         false,
         true
       );
@@ -126,7 +126,7 @@ async function request(url: string, init?: RequestInit, timeoutMs = REQUEST_TIME
     try {
       json = (await res.json()) as ApiResponse;
     } catch {
-      throw new ApiError('server_error', `Google Sheet ตอบกลับไม่ใช่ข้อมูลที่ถูกต้อง${setupHint()}`, false, true);
+      throw new ApiError('server_error', `เซิร์ฟเวอร์ตอบกลับไม่ใช่ข้อมูลที่ถูกต้อง${setupHint()}`, false, true);
     }
     if (json.status !== 'success') {
       throw new ApiError(json.code ?? 'server_error', json.message ?? 'เกิดข้อผิดพลาดจากเซิร์ฟเวอร์');
@@ -135,9 +135,9 @@ async function request(url: string, init?: RequestInit, timeoutMs = REQUEST_TIME
   } catch (e) {
     if (isApiError(e)) throw e;
     if (e instanceof DOMException && e.name === 'AbortError') {
-      throw new ApiError('network', 'หมดเวลารอการตอบกลับจาก Google Sheet', true);
+      throw new ApiError('network', 'หมดเวลารอการตอบกลับจากเซิร์ฟเวอร์', true);
     }
-    throw new ApiError('network', 'เชื่อมต่อ Google Sheet ไม่ได้ ตรวจสอบอินเทอร์เน็ตหรือ URL');
+    throw new ApiError('network', 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ตรวจสอบอินเทอร์เน็ตหรือ URL');
   } finally {
     clearTimeout(timer);
   }

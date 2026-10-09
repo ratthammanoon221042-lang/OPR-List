@@ -234,12 +234,12 @@ export default function App() {
 
         if (outcome.status === 'saved') {
           serverList = outcome.list;
-          showToast(`${opts.success} และบันทึกลง Google Sheet แล้ว`, 'success');
+          showToast(`${opts.success} และบันทึกลงระบบแล้ว`, 'success');
         } else if (outcome.status === 'unknown') {
           // Neither the write nor a check of the sheet got through. Keep the item on screen:
           // the next successful sync (retried automatically) shows what really happened.
           showToast(
-            'ยังยืนยันไม่ได้ว่าบันทึกลง Google Sheet แล้วหรือยัง เพราะติดต่อไม่ได้ชั่วคราว รายการยังแสดงอยู่และแอปจะตรวจสอบให้อัตโนมัติ ถ้ารายการหายไปเอง แปลว่ายังไม่ถูกบันทึก ให้บันทึกใหม่อีกครั้ง',
+            'ยังยืนยันไม่ได้ว่าบันทึกลงระบบแล้วหรือยัง เพราะติดต่อไม่ได้ชั่วคราว รายการยังแสดงอยู่และแอปจะตรวจสอบให้อัตโนมัติ ถ้ารายการหายไปเอง แปลว่ายังไม่ถูกบันทึก ให้บันทึกใหม่อีกครั้ง',
             'warning'
           );
         } else {
