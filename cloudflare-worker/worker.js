@@ -45,7 +45,8 @@ const DEFAULT_GEMINI_FALLBACKS = 'gemini-flash-lite-latest';
 // ถ้ารุ่นไหนไม่รับ (400 ที่พูดถึง thinking) จะข้ามไปแบบถัดไป และจำแบบที่ใช้ได้ไว้ ตั้ง GEMINI_THINKING=default เพื่อไม่ส่งเลย
 const THINKING_VARIANTS = [{ thinkingBudget: 0 }, { thinkingLevel: 'minimal' }, { thinkingLevel: 'low' }, null];
 const THINKING_LABELS = ['off', 'minimal', 'low', 'default'];
-// GEMINI_THINKING = off | minimal | low | default fixes one form (no probing, so no wasted requests); anything else probes
+// GEMINI_THINKING: default (ค่าเริ่มต้น: ไม่ส่งคำสั่งเรื่องการคิด ใช้การคิดปกติของรุ่น) | off | minimal | low = กำหนดแบบตายตัว |
+// auto = ลองลดการคิดให้เองแล้วจำแบบที่ใช้ได้ (ช้า/เปลืองคำขอตอนลองครั้งแรก)
 const FIXED_THINKING = { off: 0, minimal: 1, low: 2, default: 3 };
 let thinkingIndex = 0;
 const ATTEMPTS_PER_MODEL = 2;
@@ -275,7 +276,7 @@ async function handleExtract(body, env, scriptUrl, cors) {
     .filter((m) => m && m !== primary);
   const retryDelay = Number(env.GEMINI_RETRY_DELAY_MS ?? RETRY_DELAY_MS);
   const startedAt = Date.now();
-  const fixedThinking = FIXED_THINKING[String(env.GEMINI_THINKING || '').trim().toLowerCase()];
+  const fixedThinking = FIXED_THINKING[String(env.GEMINI_THINKING || 'default').trim().toLowerCase()];
   const probeThinking = fixedThinking === undefined;
   let thinkingAt = probeThinking ? thinkingIndex : fixedThinking;
   let usedModel = '';

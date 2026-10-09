@@ -401,10 +401,10 @@ describe('extract (read cars from photos)', () => {
     expect((await res.json()).data.vehicles[0].plate).toBe('9ขข9999');
   });
 
-  it('reports how long it took and which model answered; asks the AI to think less', async () => {
+  it('reports how long it took and which model answered; with GEMINI_THINKING=auto it asks the AI to think less', async () => {
     const fetchMock = upstream();
     vi.stubGlobal('fetch', fetchMock);
-    const body = (await (await extract({}, { GEMINI_MODEL: 'gemini-test' })).json()).data;
+    const body = (await (await extract({}, { GEMINI_MODEL: 'gemini-test', GEMINI_THINKING: 'auto' })).json()).data;
     expect(body.meta).toMatchObject({ model: 'gemini-test' });
     expect(body.meta.totalMs).toBeGreaterThanOrEqual(body.meta.aiMs);
     const call = fetchMock.mock.calls.find(([u]) => String(u).startsWith(GEMINI));
@@ -419,10 +419,11 @@ describe('extract (read cars from photos)', () => {
     expect(String(call?.[0])).toContain('/v1beta/models/gemini-3.6-flash:generateContent');
   });
 
-  it('GEMINI_THINKING=default sends no thinking setting at all', async () => {
+  it('by default sends no thinking setting at all (the model thinks as usual)', async () => {
     const fetchMock = upstream();
     vi.stubGlobal('fetch', fetchMock);
-    await extract({}, { GEMINI_THINKING: 'default' });
+    const res = await extract({});
+    expect((await res.json()).data.meta.thinking).toBe('default');
     const call = fetchMock.mock.calls.find(([u]) => String(u).startsWith(GEMINI));
     expect(JSON.parse(call?.[1].body).generationConfig.thinkingConfig).toBeUndefined();
   });
@@ -469,7 +470,7 @@ describe('extract (read cars from photos)', () => {
           method: 'POST',
           body: JSON.stringify({ action: 'extract', token: `tok-fresh-${++n}`, today: '2026-10-09', files: [file] }),
         }),
-        { ...env, GEMINI_API_KEY: 'key-123', GEMINI_RETRY_DELAY_MS: '0', ...envOver }
+        { ...env, GEMINI_API_KEY: 'key-123', GEMINI_RETRY_DELAY_MS: '0', GEMINI_THINKING: 'auto', ...envOver }
       );
     const bad = () => new Response(JSON.stringify({ error: { code: 400, status: 'INVALID_ARGUMENT', message: 'Request contains an invalid argument.' } }), { status: 400 });
 
@@ -525,7 +526,7 @@ describe('extract (read cars from photos)', () => {
           method: 'POST',
           body: JSON.stringify({ action: 'extract', token: `tok-last-${++n}`, today: '2026-10-09', files: [file] }),
         }),
-        { ...env, GEMINI_API_KEY: 'key-123', GEMINI_RETRY_DELAY_MS: '0' }
+        { ...env, GEMINI_API_KEY: 'key-123', GEMINI_RETRY_DELAY_MS: '0', GEMINI_THINKING: 'auto' }
       );
     expect((await call()).status).toBe(200);
     expect(seen).toEqual([{ thinkingBudget: 0 }, { thinkingLevel: 'minimal' }, { thinkingLevel: 'low' }]);
