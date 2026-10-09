@@ -36,6 +36,7 @@ export const DropdownSelect: React.FC<DropdownSelectProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -52,6 +53,11 @@ export const DropdownSelect: React.FC<DropdownSelectProps> = ({
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
+  }, [isOpen]);
+
+  // Inside a scrolling dialog the list can open below the visible area: scroll it into view
+  useEffect(() => {
+    if (isOpen) popupRef.current?.scrollIntoView({ block: 'nearest' });
   }, [isOpen]);
 
   // Focus search input on open
@@ -134,6 +140,7 @@ export const DropdownSelect: React.FC<DropdownSelectProps> = ({
       {/* Dropdown Popup Menu - ALWAYS STRICTLY BELOW (top-full mt-1.5) */}
       {isOpen && (
         <div 
+          ref={popupRef}
           className="absolute left-0 right-0 top-full mt-1.5 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden animate-in fade-in-50 slide-in-from-top-2 duration-150"
           style={{ minWidth: '100%' }}
         >

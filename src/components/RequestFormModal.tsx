@@ -276,9 +276,9 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-5">
+    <div className="fixed inset-0 z-50 overflow-hidden bg-slate-900/60 backdrop-blur-xs flex items-stretch justify-center p-2 sm:px-5 sm:pt-[4.5rem] sm:pb-8">
       <div
-        className={`bg-white rounded-2xl w-full shadow-2xl border border-slate-200 overflow-hidden max-h-full flex flex-col animate-in fade-in zoom-in-95 duration-150 ${
+        className={`bg-white rounded-2xl w-full shadow-2xl border border-slate-200 overflow-hidden h-full flex flex-col animate-in fade-in zoom-in-95 duration-150 ${
           isEdit ? 'max-w-5xl' : 'max-w-[min(90vw,1680px)]'
         }`}
       >
