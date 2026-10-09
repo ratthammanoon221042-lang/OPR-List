@@ -255,9 +255,9 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex min-h-screen items-start justify-center p-2 sm:p-5">
+    <div className="fixed inset-0 z-50 overflow-hidden bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-5">
       <div
-        className={`bg-white rounded-2xl w-full shadow-2xl border border-slate-200 overflow-hidden my-2 sm:my-6 max-h-[calc(100vh-1rem)] sm:max-h-[calc(100vh-3rem)] flex flex-col animate-in fade-in zoom-in-95 duration-150 ${
+        className={`bg-white rounded-2xl w-full shadow-2xl border border-slate-200 overflow-hidden max-h-full flex flex-col animate-in fade-in zoom-in-95 duration-150 ${
           isEdit ? 'max-w-5xl' : 'max-w-[min(90vw,1680px)]'
         }`}
       >
@@ -303,7 +303,7 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
         </div>
 
         <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
-          <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-5 pb-24">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-5 pb-8">
             {errorMsg && (
               <div role="alert" className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-base rounded-xl flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
@@ -544,7 +544,7 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
                           type="text"
                           list="color-options"
                           aria-label={`สี แถวที่ ${i + 1}`}
-                          placeholder="เลือกหรือพิมพ์สี (ถ้ามี)"
+                          placeholder="เลือกหรือพิมพ์สี"
                           value={row.color}
                           onChange={(e) => changeRow(row.key, { color: e.target.value }, ['color'])}
                           className={cellClass(row, 'color', !!clash)}

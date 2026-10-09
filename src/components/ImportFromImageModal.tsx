@@ -148,9 +148,9 @@ const ImportDialog: React.FC<Omit<ImportFromImageModalProps, 'isOpen'>> = ({
   const reading = busy === 'reading';
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex min-h-screen items-start justify-center p-2 sm:p-5">
-      <div className="bg-white rounded-2xl max-w-3xl w-full shadow-2xl border border-slate-200 overflow-hidden my-2 sm:my-6 flex flex-col">
-        <div className="bg-slate-900 text-white px-5 sm:px-8 py-4 flex items-center justify-between gap-3">
+    <div className="fixed inset-0 z-50 overflow-hidden bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-5">
+      <div className="bg-white rounded-2xl max-w-3xl w-full shadow-2xl border border-slate-200 overflow-hidden max-h-full flex flex-col">
+        <div className="shrink-0 bg-slate-900 text-white px-5 sm:px-8 py-4 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shrink-0">
               <Camera className="w-5 h-5" />
@@ -171,7 +171,7 @@ const ImportDialog: React.FC<Omit<ImportFromImageModalProps, 'isOpen'>> = ({
           </button>
         </div>
 
-        <div className="p-4 sm:p-8 space-y-5">
+        <div className="p-4 sm:p-8 space-y-5 flex-1 min-h-0 overflow-y-auto">
           {error && (
             <div role="alert" className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-base rounded-xl flex items-start gap-2">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -334,7 +334,7 @@ const ImportDialog: React.FC<Omit<ImportFromImageModalProps, 'isOpen'>> = ({
           </div>
         )}
 
-        <div className="px-5 sm:px-8 py-4 border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2.5">
+        <div className="shrink-0 px-5 sm:px-8 py-4 border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2.5">
           <span className="text-base text-slate-600" aria-live="polite">
             {reading
               ? `กำลังอ่านเอกสาร ${elapsed} วินาที (ปกติไม่เกิน 20-30 วินาที) อย่าปิดหน้านี้`
