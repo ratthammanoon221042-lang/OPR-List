@@ -36,6 +36,7 @@ const MAX_BODY_BYTES = 1_000_000;
 const UPSTREAM_TIMEOUT_MS = 25_000;
 
 // ----- อ่านรถจากรูป (extract) -----
+// เปลี่ยนปลายทางได้ด้วย GEMINI_BASE_URL (เช่น Cloudflare AI Gateway: .../google-ai-studio/v1beta/models/)
 const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/';
 // ชื่อรุ่นเปลี่ยนได้โดยตั้ง GEMINI_MODEL ในหน้า Cloudflare (ไม่ต้องแก้โค้ด)
 const DEFAULT_GEMINI_MODEL = 'gemini-flash-latest';
@@ -221,7 +222,7 @@ async function handleVerify(body, scriptUrl, cors) {
   return reply(200, { status: 'success' }, cors);
 }
 
-async function handleExtract(body, env, scriptUrl, cors) {
+async function handleExtract(body, env, scriptUrl, cors, colo = '') {
   const requestStart = Date.now();
   const files = Array.isArray(body.files) ? body.files : [];
   const token = typeof body.token === 'string' ? body.token : '';
@@ -284,6 +285,8 @@ async function handleExtract(body, env, scriptUrl, cors) {
     .filter((m) => m && m !== primary);
   const retryDelay = Number(env.GEMINI_RETRY_DELAY_MS ?? RETRY_DELAY_MS);
   const startedAt = Date.now();
+  const geminiBase = String(env.GEMINI_BASE_URL || GEMINI_ENDPOINT).trim().replace(/\/?$/, '/');
+  let locationBlocked = false;
   const fixedThinking = FIXED_THINKING[String(env.GEMINI_THINKING || 'auto').trim().toLowerCase()];
   const probeThinking = fixedThinking === undefined;
   let thinkingAt = probeThinking ? thinkingIndex : fixedThinking;
@@ -303,7 +306,7 @@ async function handleExtract(body, env, scriptUrl, cors) {
 
       let res;
       try {
-        res = await fetch(`${GEMINI_ENDPOINT}${encodeURIComponent(model)}:generateContent`, {
+        res = await fetch(`${geminiBase}${encodeURIComponent(model)}:generateContent`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-goog-api-key': String(env.GEMINI_API_KEY) },
           body: JSON.stringify(buildPayload(THINKING_VARIANTS[thinkingAt], media)),
@@ -333,6 +336,12 @@ async function handleExtract(body, env, scriptUrl, cors) {
       }
       last = { status: res.status, detail };
       outcomes.set(model, `HTTP ${res.status}${detail ? `: ${detail}` : ''}`);
+      // Google refuses the place the request comes from (the Cloudflare server that handled it): no model,
+      // setting or retry from the same place changes that, so stop here and say what to do
+      if (res.status === 400 && /location is not supported/i.test(errorText)) {
+        locationBlocked = true;
+        break attempts;
+      }
       // A 400 may be the model not taking the high-resolution setting: try again without it first
       if (res.status === 400 && media) {
         media = null;
@@ -358,6 +367,14 @@ async function handleExtract(body, env, scriptUrl, cors) {
     // Say what happened to every model that was tried, not only the last one
     const summary = [...outcomes].map(([m, t]) => `${m} → ${t}`).join(' | ');
     const detailText = summary ? ` [${summary}]` : '';
+    if (locationBlocked) {
+      return fail(
+        502,
+        'server_error',
+        `Google ไม่รับคำขอจากตำแหน่งของเซิร์ฟเวอร์ Cloudflare ที่ตอบอยู่${colo ? ` (ศูนย์ข้อมูล ${colo})` : ''} (User location is not supported) ลองอีกครั้ง หรือเปลี่ยนเครือข่าย (Wi-Fi/มือถือ) ถ้าเป็นบ่อย ให้ตั้ง Smart Placement หรือใช้ AI Gateway ที่ Cloudflare`,
+        cors
+      );
+    }
     const statuses = [...outcomes.values()].map((t) => (/^HTTP (\d+)/.exec(t) || [])[1]);
     if (statuses.includes('429')) {
       return fail(429, 'rate_limited', `โควต้า AI ที่ใช้ฟรีหมดชั่วคราว รอสักพักแล้วลองใหม่ หรือกรอกเอง${detailText}`, cors);
@@ -449,7 +466,7 @@ async function handle(request, env = {}) {
       return fail(400, 'bad_request', 'รูปแบบข้อมูลไม่ถูกต้อง', cors);
     }
     const action = parsed && parsed.action;
-    if (action === 'extract') return handleExtract(parsed, env, scriptUrl, cors);
+    if (action === 'extract') return handleExtract(parsed, env, scriptUrl, cors, (request.cf && request.cf.colo) || '');
     if (action === 'verify') return handleVerify(parsed, scriptUrl, cors);
     if (declared > MAX_BODY_BYTES || text.length > MAX_BODY_BYTES) return fail(413, 'bad_request', 'ข้อมูลใหญ่เกินไป', cors);
     if (!POST_ACTIONS.has(action)) return fail(400, 'bad_request', 'ไม่รู้จัก action นี้', cors);

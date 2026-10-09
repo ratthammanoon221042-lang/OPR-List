@@ -45,3 +45,9 @@
 - ถ้า Google ตอบ 503 / โควต้ารุ่นหลักเต็ม จะลองซ้ำและสลับไปรุ่นสำรองให้เอง ตั้งรุ่นสำรองได้ที่ `GEMINI_FALLBACK_MODELS` (คั่นด้วยจุลภาค ค่าเริ่มต้น `gemini-flash-lite-latest`)
 - ภาพที่ใหญ่เกินจำเป็นถูกย่อก่อนส่ง (ด้านยาวไม่เกิน 1800 พิกเซล) การส่งไฟล์ PDF ต้นฉบับหรือถ่ายเอกสารตรงๆ ในที่สว่างมักแม่นกว่าภาพแคปหน้าจอที่ย่อมา
 
+
+### ถ้าขึ้นว่า "User location is not supported for the API use"
+Google ไม่ให้บริการ Gemini API กับบางประเทศ/ภูมิภาค และมองตำแหน่งจาก **เซิร์ฟเวอร์ Cloudflare ที่รับคำขอ** (ซึ่งเป็นเครื่องที่ใกล้ผู้ใช้ที่สุด ขึ้นกับเครือข่ายที่ใช้ เช่น Wi-Fi กับมือถืออาจไปคนละศูนย์ข้อมูล) ถ้าเครื่องนั้นอยู่ในภูมิภาคที่ Google ไม่รองรับ (เช่นฮ่องกง) จะถูกปฏิเสธ ข้อความ error จะบอกรหัสศูนย์ข้อมูล (เช่น HKG) ให้ด้วย วิธีแก้ (ลองตามลำดับ):
+1. ลองใหม่อีกครั้ง หรือสลับเครือข่าย (Wi-Fi ↔ มือถือ)
+2. **Smart Placement:** Cloudflare → Workers & Pages → `opr-list-relay` → Settings → Runtime → Placement → เลือก **Smart** (ให้ Worker ทำงานใกล้ปลายทางที่เรียก) แล้วรอสักครู่ให้ระบบเรียนรู้
+3. **AI Gateway:** Cloudflare → AI → AI Gateway → Create Gateway (ตั้งชื่อ เช่น `opr-gemini`) แล้วตั้งตัวแปรใน Worker `GEMINI_BASE_URL` = `https://gateway.ai.cloudflare.com/v1/<ACCOUNT_ID>/<ชื่อ gateway>/google-ai-studio/v1beta/models` (ACCOUNT_ID ดูได้ในหน้า Gateway) แล้ว Deploy

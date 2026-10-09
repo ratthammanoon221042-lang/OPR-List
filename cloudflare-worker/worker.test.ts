@@ -376,6 +376,35 @@ describe('extract (read cars from photos)', () => {
       expect((await res.json()).data.meta.thinking).toBe('minimal');
     });
 
+    it('a "location not supported" refusal stops at once (no retries, no backup models) and explains it', async () => {
+      const blocked = () =>
+        new Response(JSON.stringify({ error: { code: 400, status: 'FAILED_PRECONDITION', message: 'User location is not supported for the API use.' } }), { status: 400 });
+      const models = sequence([blocked, blocked, blocked, blocked]);
+      const res = await handle(
+        Object.assign(
+          new Request('https://proxy.example/', {
+            method: 'POST',
+            body: JSON.stringify({ action: 'extract', token: `tok-loc-${++n}`, today: '2026-10-09', files: [file] }),
+          }),
+          { cf: { colo: 'HKG' } }
+        ),
+        { ...env, GEMINI_API_KEY: 'key-123', EXTRACT_RATE_LIMIT_MAX: '1000', ...fast }
+      );
+      expect(res.status).toBe(502);
+      const message = (await res.json()).message;
+      expect(message).toContain('HKG');
+      expect(message).toContain('Smart Placement');
+      expect(models).toHaveLength(1);
+    });
+
+    it('GEMINI_BASE_URL sends the call somewhere else (for example Cloudflare AI Gateway)', async () => {
+      const fetchMock = upstream();
+      vi.stubGlobal('fetch', fetchMock);
+      await extract({}, { GEMINI_BASE_URL: 'https://gateway.ai.cloudflare.com/v1/acct/gw/google-ai-studio/v1beta/models', GEMINI_MODEL: 'm1' });
+      const urls = fetchMock.mock.calls.map(([u]) => String(u));
+      expect(urls.some((u) => u === 'https://gateway.ai.cloudflare.com/v1/acct/gw/google-ai-studio/v1beta/models/m1:generateContent')).toBe(true);
+    });
+
     it('shows Google\'s own reason for an unexpected error', async () => {
       const odd = () => new Response(JSON.stringify({ error: { status: 'INTERNAL_X' } }), { status: 418 });
       sequence([odd, odd]);
