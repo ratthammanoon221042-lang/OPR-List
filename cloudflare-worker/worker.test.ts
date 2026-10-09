@@ -391,6 +391,14 @@ describe('extract (read cars from photos)', () => {
     expect(JSON.parse(call?.[1].body).generationConfig.thinkingConfig).toEqual({ thinkingBudget: 0 });
   });
 
+  it('accepts a model name copied from AI Studio with the "models/" prefix', async () => {
+    const fetchMock = upstream();
+    vi.stubGlobal('fetch', fetchMock);
+    await extract({}, { GEMINI_MODEL: 'models/gemini-3.6-flash', GEMINI_FALLBACK_MODELS: 'models/gemini-2.5-flash' });
+    const call = fetchMock.mock.calls.find(([u]) => String(u).startsWith(GEMINI));
+    expect(String(call?.[0])).toContain('/v1beta/models/gemini-3.6-flash:generateContent');
+  });
+
   it('GEMINI_THINKING=default sends no thinking setting at all', async () => {
     const fetchMock = upstream();
     vi.stubGlobal('fetch', fetchMock);
@@ -457,7 +465,7 @@ describe('extract (read cars from photos)', () => {
       })
     );
     expect((await call()).status).toBe(200);
-    expect(seen).toEqual([{ thinkingBudget: 0 }, { thinkingLevel: 'minimal' }, null]);
+    expect(seen).toEqual([{ thinkingBudget: 0 }, { thinkingLevel: 'minimal' }, { thinkingLevel: 'low' }]);
 
     // nothing works (for example a picture Google cannot process): the real reason is shown
     vi.stubGlobal(
@@ -490,12 +498,12 @@ describe('extract (read cars from photos)', () => {
       })
     );
     expect((await extract({}, { GEMINI_RETRY_DELAY_MS: '0' })).status).toBe(200);
-    expect(seen).toEqual([{ thinkingBudget: 0 }, { thinkingLevel: 'minimal' }, null]);
+    expect(seen).toEqual([{ thinkingBudget: 0 }, { thinkingLevel: 'minimal' }, { thinkingLevel: 'low' }]);
     // next request starts with the form that worked
     seen.length = 0;
     calls = 99;
     await extract({}, { GEMINI_RETRY_DELAY_MS: '0' });
-    expect(seen).toEqual([null]);
+    expect(seen).toEqual([{ thinkingLevel: 'low' }]);
   });
 
 });

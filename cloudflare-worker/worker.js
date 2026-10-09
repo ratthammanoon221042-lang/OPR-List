@@ -43,7 +43,7 @@ const DEFAULT_GEMINI_MODEL = 'gemini-flash-latest';
 const DEFAULT_GEMINI_FALLBACKS = 'gemini-flash-lite-latest';
 // ลดเวลา "คิด" ของ AI (การดึงข้อมูลจากเอกสารไม่ต้องคิดลึก) รุ่นต่างกันใช้พารามิเตอร์ต่างกัน จึงลองตามลำดับ
 // ถ้ารุ่นไหนไม่รับ (400 ที่พูดถึง thinking) จะข้ามไปแบบถัดไป และจำแบบที่ใช้ได้ไว้ ตั้ง GEMINI_THINKING=default เพื่อไม่ส่งเลย
-const THINKING_VARIANTS = [{ thinkingBudget: 0 }, { thinkingLevel: 'minimal' }, null];
+const THINKING_VARIANTS = [{ thinkingBudget: 0 }, { thinkingLevel: 'minimal' }, { thinkingLevel: 'low' }, null];
 let thinkingIndex = 0;
 const ATTEMPTS_PER_MODEL = 2;
 const RETRY_DELAY_MS = 1_500;
@@ -263,10 +263,12 @@ async function handleExtract(body, env, scriptUrl, cors) {
     },
   });
 
-  const primary = String(env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL).trim();
+  // AI Studio shows names like "models/gemini-3.6-flash": the "models/" part is added by the URL below
+  const modelName = (m) => String(m).trim().replace(/^models\//, '');
+  const primary = modelName(env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL);
   const fallbacks = String(env.GEMINI_FALLBACK_MODELS ?? DEFAULT_GEMINI_FALLBACKS)
     .split(',')
-    .map((m) => m.trim())
+    .map(modelName)
     .filter((m) => m && m !== primary);
   const retryDelay = Number(env.GEMINI_RETRY_DELAY_MS ?? RETRY_DELAY_MS);
   const startedAt = Date.now();
