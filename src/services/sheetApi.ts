@@ -129,7 +129,14 @@ async function request(url: string, init?: RequestInit, timeoutMs = REQUEST_TIME
       throw new ApiError('server_error', `เซิร์ฟเวอร์ตอบกลับไม่ใช่ข้อมูลที่ถูกต้อง${setupHint()}`, false, true);
     }
     if (json.status !== 'success') {
-      throw new ApiError(json.code ?? 'server_error', json.message ?? 'เกิดข้อผิดพลาดจากเซิร์ฟเวอร์');
+      // The old script (before the floor became optional) refuses a blank floor with exactly this text
+      const oldScript = json.message === 'ชั้นที่ขอจอดต้องเป็น B1 หรือ B2';
+      throw new ApiError(
+        json.code ?? 'server_error',
+        oldScript
+          ? 'ระบบฝั่งเซิร์ฟเวอร์ยังเป็นเวอร์ชันเก่าที่บังคับให้เลือกชั้น ต้องวางโค้ด Code.gs ล่าสุดใน Apps Script แล้ว Deploy เป็น New version (ระหว่างนี้เลือกชั้น B1 หรือ B2 ก่อนบันทึกได้)'
+          : json.message ?? 'เกิดข้อผิดพลาดจากเซิร์ฟเวอร์',
+      );
     }
     return json;
   } catch (e) {
