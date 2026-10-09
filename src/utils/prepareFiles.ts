@@ -3,7 +3,9 @@ import type { ExtractFile } from '../services/sheetApi';
 /** Limits for the "fill from photo" feature (the relay allows about 8 MB per request) */
 export const MAX_IMPORT_FILES = 6;
 const MAX_PDF_BYTES = 5 * 1024 * 1024;
-const MAX_IMAGE_SIDE = 1800;
+// Larger than before so the small Thai letters of a table photo stay readable
+const MAX_IMAGE_SIDE = 2200;
+const JPEG_QUALITY = 0.88;
 export const MAX_TOTAL_BASE64_CHARS = 7_000_000;
 
 export const ACCEPTED_TYPES = 'image/jpeg,image/png,image/webp,application/pdf';
@@ -47,9 +49,37 @@ export async function prepareFile(file: File): Promise<ExtractFile> {
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    const data = canvas.toDataURL('image/jpeg', 0.85).split(',')[1] ?? '';
+    const data = canvas.toDataURL('image/jpeg', JPEG_QUALITY).split(',')[1] ?? '';
     return { name: file.name || 'ภาพที่วาง', mimeType: 'image/jpeg', data };
   } finally {
     bitmap.close();
   }
+}
+
+/** The picture as a data URL, for a thumbnail */
+export const toDataUrl = (file: ExtractFile): string => `data:${file.mimeType};base64,${file.data}`;
+
+/**
+ * Turns a picture a quarter turn (1 = clockwise, -1 = counter-clockwise), for photos taken sideways.
+ * PDFs are returned unchanged (they cannot be rotated here).
+ */
+export async function rotateFile(file: ExtractFile, quarterTurns: 1 | -1): Promise<ExtractFile> {
+  if (!file.mimeType.startsWith('image/')) return file;
+
+  const img = new Image();
+  img.src = toDataUrl(file);
+  await img.decode();
+
+  const canvas = document.createElement('canvas');
+  canvas.width = img.naturalHeight;
+  canvas.height = img.naturalWidth;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('ประมวลผลภาพไม่ได้');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate((quarterTurns * Math.PI) / 2);
+  ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+  const data = canvas.toDataURL('image/jpeg', JPEG_QUALITY).split(',')[1] ?? '';
+  return { ...file, mimeType: 'image/jpeg', data };
 }

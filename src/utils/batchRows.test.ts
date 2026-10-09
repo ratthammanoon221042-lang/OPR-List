@@ -8,7 +8,9 @@ import {
   isRowEmpty,
   missingFields,
   newRow,
+  normalizeBrand,
   normalizeColor,
+  splitColorFromText,
   normalizeDepartment,
   normalizeProvince,
 } from './batchRows';
@@ -271,5 +273,75 @@ describe('reading time', () => {
     expect(draftFromExtraction({ vehicles: [], meta }, '2026-10-01').meta).toEqual(meta);
     expect(draftFromExtraction({ vehicles: [] }, '2026-10-01').meta).toBeNull();
     expect(draftFromExtraction({ vehicles: [], meta: { model: 'x' } as never }, '2026-10-01').meta).toBeNull();
+  });
+});
+
+describe('brand and colour written together', () => {
+  it('takes the brand from a "brand/model" text, in English or Thai, in any case', () => {
+    expect(normalizeBrand('Honda/City')).toBe('Honda');
+    expect(normalizeBrand('honda jazz')).toBe('Honda');
+    expect(normalizeBrand('Benz a200')).toBe('Benz');
+    expect(normalizeBrand('Mazda2')).toBe('Mazda');
+    expect(normalizeBrand('suzuki Swift')).toBe('Suzuki');
+    expect(normalizeBrand('isuzu d-max')).toBe('Isuzu');
+    expect(normalizeBrand('nissan/almera')).toBe('Nissan');
+    expect(normalizeBrand('Land Rover Defender')).toBe('Land Rover');
+    expect(normalizeBrand('โตโยต้า/ยาริส')).toBe('Toyota');
+    expect(normalizeBrand('โตโยต้า/Altis')).toBe('Toyota');
+    expect(normalizeBrand('Wuling Air')).toBe('Wuling Air'); // unknown brand: kept as written
+    expect(normalizeBrand('')).toBe('');
+  });
+
+  it('splits a colour out of the model text', () => {
+    expect(splitColorFromText('Haval สีดำ')).toEqual({ rest: 'Haval', color: 'ดำ' });
+    expect(splitColorFromText('Honda Jazz (GE สีเทา)')).toEqual({ rest: 'Honda Jazz (GE)', color: 'เทา' });
+    expect(splitColorFromText('Toyota Altis')).toEqual({ rest: 'Toyota Altis', color: '' });
+  });
+});
+
+describe('a table that lists each car with its own department, a province sometimes missing and the colour inside the model', () => {
+  const doc = {
+    vehicles: [
+      { kind: 'car' as const, brand: 'Honda Jazz (GE สีเทา)', plate: '1กฒ9551', province: 'กทม', department: 'สป.ดศ.', floor: 'B1' },
+      { kind: 'car' as const, brand: 'Haval สีดำ', plate: '4ขก1340', province: 'กทม', department: 'สป.ดศ.', floor: 'B1' },
+      { kind: 'car' as const, brand: 'toyota/yaris', plate: 'งจ 2485', province: 'นครราชสีมา', department: 'สดช.', floor: 'B1' },
+      { kind: 'car' as const, brand: 'Mazda2', plate: '6ขฒ4332', department: 'สป.ดศ.', floor: 'B1' },
+    ],
+  };
+
+  it('puts the department most cars have at the top and keeps the others on their own rows', () => {
+    const draft = draftFromExtraction(doc, '2026-10-09');
+    expect(draft.common.department).toBe('สป.ดศ.');
+    expect(draft.rows.map((r) => r.department)).toEqual([undefined, undefined, 'สดช.', undefined]);
+    const permits = buildPermits(draft.rows, draft.common);
+    expect(permits.map((p) => p.department)).toEqual(['สป.ดศ.', 'สป.ดศ.', 'สดช.', 'สป.ดศ.']);
+  });
+
+  it('splits brand and colour, and starts a missing province as Bangkok with a check flag', () => {
+    const draft = draftFromExtraction(doc, '2026-10-09');
+    expect(draft.rows[0]).toMatchObject({ brand: 'Honda', color: 'เทา' });
+    expect(draft.rows[1]).toMatchObject({ brand: 'Haval', color: 'ดำ' });
+    expect(draft.rows[2]).toMatchObject({ brand: 'Toyota', color: '', plate: 'งจ2485', province: 'นครราชสีมา' });
+    expect(draft.rows[3]).toMatchObject({ plate: '6ขฒ4332', province: 'กรุงเทพมหานคร' });
+    expect(draft.rows[3].flags).toContain('province');
+    expect(draft.rows[0].flags).not.toContain('brand');
+    expect(isRowComplete(draft.rows[3])).toBe(true); // colour is optional, province defaulted
+  });
+
+  it('a department named only at the top (a letter) applies to cars that have none', () => {
+    const draft = draftFromExtraction(
+      { department: 'สกมช.', vehicles: [{ kind: 'car', brand: 'Kia', plate: '1กก1', province: 'กทม.', floor: 'B1' }, { kind: 'car', brand: 'Kia', plate: '2กก2', province: 'กทม.', floor: 'B1', department: 'ปอท.' }] },
+      '2026-10-09'
+    );
+    expect(draft.common.department).toBe('สกมช.');
+    expect(draft.rows[0].department).toBeUndefined();
+    expect(draft.rows[1].department).toBe('ปอท.');
+  });
+});
+
+describe('own department on a row', () => {
+  it('a row department wins; empty uses the shared one', () => {
+    const permits = buildPermits([car({ department: 'สดช.' }), car({ plate: '2ขข2', department: '' }), car({ plate: '3คค3' })], common);
+    expect(permits.map((p) => p.department)).toEqual(['สดช.', 'สกมช.', 'สกมช.']);
   });
 });

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Camera, FileText, Loader2, X, ImagePlus, AlertCircle, ShieldAlert } from 'lucide-react';
+import { Camera, FileText, Loader2, X, ImagePlus, AlertCircle, ShieldAlert, RotateCw, RotateCcw } from 'lucide-react';
 import { ExtractFile, extractDocument, isApiError, warmExtract } from '../services/sheetApi';
-import { ACCEPTED_TYPES, MAX_IMPORT_FILES, MAX_TOTAL_BASE64_CHARS, prepareFile } from '../utils/prepareFiles';
+import { ACCEPTED_TYPES, MAX_IMPORT_FILES, MAX_TOTAL_BASE64_CHARS, prepareFile, rotateFile, toDataUrl } from '../utils/prepareFiles';
 import { ExtractedDocument } from '../utils/batchRows';
 
 interface ImportFromImageModalProps {
@@ -18,7 +18,11 @@ interface ImportFromImageModalProps {
 interface PickedFile extends ExtractFile {
   id: number;
   sizeKb: number;
+  /** Thumbnail (a data URL), '' for PDFs */
+  preview: string;
 }
+
+const kb = (f: ExtractFile) => Math.round((f.data.length * 3) / 4 / 1024);
 
 let fileId = 0;
 
@@ -39,6 +43,20 @@ const ImportDialog: React.FC<Omit<ImportFromImageModalProps, 'isOpen'>> = ({
   const [busy, setBusy] = useState<'preparing' | 'reading' | null>(null);
   const [error, setError] = useState('');
   const [dragging, setDragging] = useState(false);
+  const [zoomId, setZoomId] = useState<number | null>(null);
+
+  const rotate = async (id: number, turns: 1 | -1) => {
+    const target = filesRef.current.find((f) => f.id === id);
+    if (!target) return;
+    try {
+      const turned = await rotateFile(target, turns);
+      setFiles((prev) =>
+        prev.map((f) => (f.id === id ? { ...f, ...turned, sizeKb: kb(turned), preview: toDataUrl(turned) } : f))
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'หมุนภาพไม่ได้');
+    }
+  };
   const fileInput = useRef<HTMLInputElement>(null);
   const cameraInput = useRef<HTMLInputElement>(null);
   const filesRef = useRef<PickedFile[]>([]);
@@ -76,7 +94,12 @@ const ImportDialog: React.FC<Omit<ImportFromImageModalProps, 'isOpen'>> = ({
       }
       try {
         const prepared = await prepareFile(file);
-        added.push({ ...prepared, id: ++fileId, sizeKb: Math.round((prepared.data.length * 3) / 4 / 1024) });
+        added.push({
+          ...prepared,
+          id: ++fileId,
+          sizeKb: kb(prepared),
+          preview: prepared.mimeType.startsWith('image/') ? toDataUrl(prepared) : '',
+        });
       } catch (e) {
         problems.push(e instanceof Error ? e.message : 'เตรียมไฟล์ไม่สำเร็จ');
       }
@@ -223,28 +246,72 @@ const ImportDialog: React.FC<Omit<ImportFromImageModalProps, 'isOpen'>> = ({
           </div>
 
           {files.length > 0 && (
-            <ul className="space-y-2">
-              {files.map((f) => (
-                <li key={f.id} className="flex items-center gap-3 px-3 py-2 border border-slate-200 rounded-xl">
-                  <FileText className="w-5 h-5 text-slate-400 shrink-0" />
-                  <span className="flex-1 min-w-0 text-base break-words">
-                    {f.name}
-                    <span className="block text-sm text-slate-500">
-                      {f.mimeType === 'application/pdf' ? 'PDF' : 'ภาพ'} · {f.sizeKb} KB
+            <div className="space-y-2">
+              <p className="text-sm text-slate-600">
+                ถ้าภาพนอนตะแคงหรือกลับหัว กดปุ่มหมุนจนตัวหนังสือตั้งตรงก่อนกดอ่าน จะอ่านแม่นขึ้นมาก (กดที่ภาพเพื่อดูขยาย)
+              </p>
+              <ul className="space-y-2">
+                {files.map((f) => (
+                  <li key={f.id} className="flex items-center gap-3 px-3 py-2 border border-slate-200 rounded-xl">
+                    {f.preview ? (
+                      <button
+                        type="button"
+                        onClick={() => setZoomId(f.id)}
+                        aria-label={`ดูภาพ ${f.name} ขยาย`}
+                        className="shrink-0 w-20 h-28 rounded-lg border border-slate-200 bg-slate-100 overflow-hidden cursor-zoom-in"
+                      >
+                        <img src={f.preview} alt="" className="w-full h-full object-contain" />
+                      </button>
+                    ) : (
+                      <span className="shrink-0 w-20 h-28 rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-center">
+                        <FileText className="w-8 h-8 text-slate-400" />
+                      </span>
+                    )}
+                    <span className="flex-1 min-w-0 text-base break-words">
+                      {f.name}
+                      <span className="block text-sm text-slate-500">
+                        {f.mimeType === 'application/pdf' ? 'PDF' : 'ภาพ'} · {f.sizeKb} KB
+                      </span>
                     </span>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setFiles((prev) => prev.filter((x) => x.id !== f.id))}
-                    disabled={reading}
-                    aria-label={`เอา ${f.name} ออก`}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer disabled:opacity-40"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </li>
-              ))}
-            </ul>
+                    <span className="flex flex-col sm:flex-row gap-1.5 shrink-0">
+                      {f.preview && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => void rotate(f.id, -1)}
+                            disabled={reading}
+                            aria-label={`หมุน ${f.name} ไปทางซ้าย 90 องศา`}
+                            title="หมุนซ้าย 90°"
+                            className="p-2 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 cursor-pointer disabled:opacity-40"
+                          >
+                            <RotateCcw className="w-5 h-5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void rotate(f.id, 1)}
+                            disabled={reading}
+                            aria-label={`หมุน ${f.name} ไปทางขวา 90 องศา`}
+                            title="หมุนขวา 90°"
+                            className="p-2 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 cursor-pointer disabled:opacity-40"
+                          >
+                            <RotateCw className="w-5 h-5" />
+                          </button>
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setFiles((prev) => prev.filter((x) => x.id !== f.id))}
+                        disabled={reading}
+                        aria-label={`เอา ${f.name} ออก`}
+                        className="p-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer disabled:opacity-40"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
 
           <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-base">
@@ -255,6 +322,17 @@ const ImportDialog: React.FC<Omit<ImportFromImageModalProps, 'isOpen'>> = ({
             </span>
           </div>
         </div>
+
+        {zoomId !== null && files.find((f) => f.id === zoomId)?.preview && (
+          <div
+            role="dialog"
+            aria-label="ภาพขยาย"
+            onClick={() => setZoomId(null)}
+            className="fixed inset-0 z-[70] bg-slate-900/85 flex items-center justify-center p-3 cursor-zoom-out"
+          >
+            <img src={files.find((f) => f.id === zoomId)?.preview} alt="ภาพขยาย" className="max-w-full max-h-full object-contain bg-white rounded-lg" />
+          </div>
+        )}
 
         <div className="px-5 sm:px-8 py-4 border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2.5">
           <span className="text-base text-slate-600" aria-live="polite">

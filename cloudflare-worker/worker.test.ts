@@ -196,7 +196,7 @@ describe('extract (read cars from photos)', () => {
         headers,
         body: JSON.stringify({ action: 'extract', token: `tok-${++n}`, today: '2026-10-09', files: [file], ...over }),
       }),
-      { ...env, GEMINI_API_KEY: 'key-123', ...envOver }
+      { ...env, GEMINI_API_KEY: 'key-123', EXTRACT_RATE_LIMIT_MAX: '1000', ...envOver }
     );
 
   it('refuses without a login token and without calling the AI', async () => {
@@ -370,7 +370,7 @@ describe('extract (read cars from photos)', () => {
 
     it('GEMINI_THINKING fixes one form: no probing after a 400, and the form is reported', async () => {
       const models = sequence([() => new Response(JSON.stringify({ error: { message: 'bad' } }), { status: 400 }), ok]);
-      const res = await extract({}, { ...fast, GEMINI_THINKING: 'minimal' });
+      const res = await extract({}, { ...fast, GEMINI_THINKING: 'minimal', GEMINI_MEDIA_RESOLUTION: 'off' });
       expect(res.status).toBe(200); // the backup model answered
       expect(models).toEqual(['gemini-flash-latest', 'gemini-flash-lite-latest']);
       expect((await res.json()).data.meta.thinking).toBe('minimal');
@@ -419,13 +419,38 @@ describe('extract (read cars from photos)', () => {
     expect(String(call?.[0])).toContain('/v1beta/models/gemini-3.6-flash:generateContent');
   });
 
-  it('by default sends no thinking setting at all (the model thinks as usual)', async () => {
+  it('GEMINI_THINKING=default sends no thinking setting at all (the model thinks as usual)', async () => {
     const fetchMock = upstream();
     vi.stubGlobal('fetch', fetchMock);
-    const res = await extract({});
+    const res = await extract({}, { GEMINI_THINKING: 'default' });
     expect((await res.json()).data.meta.thinking).toBe('default');
     const call = fetchMock.mock.calls.find(([u]) => String(u).startsWith(GEMINI));
     expect(JSON.parse(call?.[1].body).generationConfig.thinkingConfig).toBeUndefined();
+  });
+
+  it('reads the picture at high resolution by default; GEMINI_MEDIA_RESOLUTION=off leaves it out', async () => {
+    const fetchMock = upstream();
+    vi.stubGlobal('fetch', fetchMock);
+    await extract({}, { GEMINI_MEDIA_RESOLUTION: 'high' });
+    await extract({}, { GEMINI_MEDIA_RESOLUTION: 'off' });
+    const sent = fetchMock.mock.calls.filter(([u]) => String(u).startsWith(GEMINI)).map(([, init]) => JSON.parse(init.body).generationConfig);
+    expect(sent[0].mediaResolution).toBe('MEDIA_RESOLUTION_HIGH');
+    expect(sent[1].mediaResolution).toBeUndefined();
+  });
+
+  it('passes the per-car department (the "สังกัด" column) through', async () => {
+    vi.stubGlobal('fetch', upstream({ gemini: new Response(JSON.stringify(geminiAnswer({ vehicles: [{ kind: 'car', plate: '1กก1', department: 'สปน.' }] })), { status: 200 }) }));
+    const res = await extract();
+    expect((await res.json()).data.vehicles[0].department).toBe('สปน.');
+  });
+
+  it('the prompt covers rotated pages, per-car department, colour inside the model text and plates with spaces', async () => {
+    const fetchMock = upstream();
+    vi.stubGlobal('fetch', fetchMock);
+    await extract();
+    const call = fetchMock.mock.calls.find(([u]) => String(u).startsWith(GEMINI));
+    const prompt = JSON.parse(call?.[1].body).contents[0].parts[0].text;
+    for (const needle of ['หมุนข้าง 90°', 'สังกัด', 'Haval สีดำ', '7 กม 374']) expect(prompt).toContain(needle);
   });
 
   it('verify warms the login check without reading anything', async () => {
@@ -470,7 +495,7 @@ describe('extract (read cars from photos)', () => {
           method: 'POST',
           body: JSON.stringify({ action: 'extract', token: `tok-fresh-${++n}`, today: '2026-10-09', files: [file] }),
         }),
-        { ...env, GEMINI_API_KEY: 'key-123', GEMINI_RETRY_DELAY_MS: '0', GEMINI_THINKING: 'auto', ...envOver }
+        { ...env, GEMINI_API_KEY: 'key-123', GEMINI_RETRY_DELAY_MS: '0', GEMINI_THINKING: 'auto', GEMINI_MEDIA_RESOLUTION: 'off', ...envOver }
       );
     const bad = () => new Response(JSON.stringify({ error: { code: 400, status: 'INVALID_ARGUMENT', message: 'Request contains an invalid argument.' } }), { status: 400 });
 
@@ -526,7 +551,7 @@ describe('extract (read cars from photos)', () => {
           method: 'POST',
           body: JSON.stringify({ action: 'extract', token: `tok-last-${++n}`, today: '2026-10-09', files: [file] }),
         }),
-        { ...env, GEMINI_API_KEY: 'key-123', GEMINI_RETRY_DELAY_MS: '0', GEMINI_THINKING: 'auto' }
+        { ...env, GEMINI_API_KEY: 'key-123', GEMINI_RETRY_DELAY_MS: '0', GEMINI_THINKING: 'auto', GEMINI_MEDIA_RESOLUTION: 'off' }
       );
     expect((await call()).status).toBe(200);
     expect(seen).toEqual([{ thinkingBudget: 0 }, { thinkingLevel: 'minimal' }, { thinkingLevel: 'low' }]);
@@ -536,5 +561,56 @@ describe('extract (read cars from photos)', () => {
     await call();
     expect(seen).toEqual([{ thinkingLevel: 'low' }]);
   });
+
+  it('drops the high-resolution setting after a 400 and retries the same model, and remembers it', async () => {
+    vi.resetModules();
+    const fresh = (await import('./worker.js')).default;
+    const call = () =>
+      fresh.fetch(
+        new Request('https://proxy.example/', {
+          method: 'POST',
+          body: JSON.stringify({ action: 'extract', token: `tok-media-${++n}`, today: '2026-10-09', files: [file] }),
+        }),
+        { ...env, GEMINI_API_KEY: 'key-123', GEMINI_RETRY_DELAY_MS: '0', GEMINI_THINKING: 'default' }
+      );
+    const seen: unknown[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string, init: { body: string }) => {
+        if (!String(url).startsWith(GEMINI)) return Promise.resolve(new Response(JSON.stringify({ status: 'success' }), { status: 200 }));
+        const cfg = JSON.parse(init.body).generationConfig;
+        seen.push(cfg.mediaResolution ?? null);
+        return Promise.resolve(
+          cfg.mediaResolution
+            ? new Response(JSON.stringify({ error: { message: 'media_resolution not supported' } }), { status: 400 })
+            : new Response(JSON.stringify(geminiAnswer({ vehicles: [] })), { status: 200 })
+        );
+      })
+    );
+    expect((await call()).status).toBe(200);
+    expect(seen).toEqual(['MEDIA_RESOLUTION_HIGH', null]);
+    seen.length = 0;
+    await call();
+    expect(seen).toEqual([null]); // remembered: not asked again
+  });
+
+  it('limits how often a reading can be started (protects the free quota)', async () => {
+    vi.resetModules();
+    const fresh = (await import('./worker.js')).default;
+    vi.stubGlobal('fetch', upstream());
+    const statuses: number[] = [];
+    for (let i = 0; i < 3; i++) {
+      const res = await fresh.fetch(
+        new Request('https://proxy.example/', {
+          method: 'POST',
+          body: JSON.stringify({ action: 'extract', token: `tok-rate-${++n}`, today: '2026-10-09', files: [file] }),
+        }),
+        { ...env, GEMINI_API_KEY: 'key-123', EXTRACT_RATE_LIMIT_MAX: '2' }
+      );
+      statuses.push(res.status);
+    }
+    expect(statuses).toEqual([200, 200, 429]);
+  });
+
 
 });

@@ -61,6 +61,11 @@ export const RequestFormModal: React.FC<RequestFormModalProps> = ({ isOpen, inst
   return <RequestForm key={`${rest.editingPermit?.id ?? 'new'}-${instanceKey ?? ''}`} {...rest} />;
 };
 
+// One row of the table: with a department column when adding, without it when editing one permit
+const ROW_COLS_ADD =
+  'md:grid-cols-[2.5rem_minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,1.1fr)_minmax(0,1.3fr)_minmax(0,1fr)_9rem_2.75rem]';
+const ROW_COLS_EDIT = 'md:grid-cols-[2.5rem_minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,1.1fr)_minmax(0,1.3fr)_9rem_2.75rem]';
+
 const inputBase =
   'w-full text-base border rounded-lg px-3 py-2.5 bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500 transition-colors';
 
@@ -469,18 +474,28 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
                   <option key={p} value={p} />
                 ))}
               </datalist>
+              <datalist id="department-options">
+                {DEPARTMENTS.filter((d) => d !== 'อื่นๆ').map((d) => (
+                  <option key={d} value={d} />
+                ))}
+              </datalist>
               <datalist id="color-options">
                 {VEHICLE_COLORS.filter((c) => c !== 'อื่นๆ').map((c) => (
                   <option key={c} value={c} />
                 ))}
               </datalist>
 
-              <div className="hidden md:grid grid-cols-[2.5rem_minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,1.1fr)_minmax(0,1.3fr)_9rem_2.75rem] gap-3 px-3 pb-2 text-sm font-semibold text-slate-600">
+              <div className={`hidden md:grid ${isEdit ? ROW_COLS_EDIT : ROW_COLS_ADD} gap-3 px-3 pb-2 text-sm font-semibold text-slate-600`}>
                 <span className="text-center">#</span>
                 <span>ยี่ห้อ <span className="text-rose-500">*</span></span>
                 <span>สี <span className="font-normal text-slate-400">(ไม่บังคับ)</span></span>
                 <span>ทะเบียน <span className="text-rose-500">*</span> <span className="font-normal text-slate-400">(ติดกัน)</span></span>
                 <span>จังหวัด <span className="text-rose-500">*</span></span>
+                {!isEdit && (
+                  <span>
+                    หน่วยงาน <span className="font-normal text-slate-400">(ไม่บังคับ)</span>
+                  </span>
+                )}
                 <span>ชั้นที่จอด <span className="text-rose-500">*</span></span>
                 <span />
               </div>
@@ -492,7 +507,7 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
                   return (
                     <div
                       key={row.key}
-                      className={`grid grid-cols-2 md:grid-cols-[2.5rem_minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,1.1fr)_minmax(0,1.3fr)_9rem_2.75rem] gap-3 p-3 items-start ${
+                      className={`grid grid-cols-2 ${isEdit ? ROW_COLS_EDIT : ROW_COLS_ADD} gap-3 p-3 items-start ${
                         clash ? 'bg-rose-50' : 'bg-white'
                       }`}
                     >
@@ -602,6 +617,21 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
                           </span>
                         )}
                       </div>
+
+                      {!isEdit && (
+                        <div className="col-span-2 md:col-span-1 min-w-0">
+                          <input
+                            type="text"
+                            list="department-options"
+                            aria-label={`หน่วยงาน แถวที่ ${i + 1}`}
+                            placeholder="ตามด้านบน"
+                            title={common.department.trim() ? `เว้นว่าง = ${common.department.trim()} (ตามด้านบน)` : 'เว้นว่าง = ตามหน่วยงานด้านบน'}
+                            value={row.department ?? ''}
+                            onChange={(e) => changeRow(row.key, { department: e.target.value })}
+                            className={`${inputBase} border-slate-300`}
+                          />
+                        </div>
+                      )}
 
                       <div
                         role="group"

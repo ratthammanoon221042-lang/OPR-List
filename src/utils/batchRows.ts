@@ -18,6 +18,8 @@ export interface DraftRow {
   plate: string;
   province: string;
   floor: 'B1' | 'B2';
+  /** Own department, only when it differs from the one shared by the whole batch ('' = use the shared one) */
+  department?: string;
   /** Own dates, only when they differ from the dates shared by the whole batch */
   startDate?: string;
   endDate?: string;
@@ -82,7 +84,7 @@ export function buildPermits(rows: DraftRow[], common: BatchCommon, now = new Da
         vehicleBrand: r.brand.trim(),
         vehicleColor: r.color.trim(),
         parkingFloor: r.floor,
-        department: common.department.trim() || undefined,
+        department: (r.department ?? '').trim() || common.department.trim() || undefined,
         subDepartment: common.subDepartment.trim() || undefined,
         startDate,
         endDate,
@@ -160,9 +162,59 @@ export function normalizeColor(raw: string): string {
   return matchOption(cleaned, VEHICLE_COLORS.filter((c) => c !== 'อื่นๆ')) || cleaned;
 }
 
+// Thai spellings of the common brands
+const BRAND_ALIASES: Record<string, string> = {
+  โตโยต้า: 'Toyota',
+  โตโยตา: 'Toyota',
+  ฮอนด้า: 'Honda',
+  อีซูซุ: 'Isuzu',
+  อีซูซุ์: 'Isuzu',
+  มาสด้า: 'Mazda',
+  มิตซูบิชิ: 'Mitsubishi',
+  นิสสัน: 'Nissan',
+  ซูซูกิ: 'Suzuki',
+  ฟอร์ด: 'Ford',
+  เบนซ์: 'Benz',
+  เมอร์เซเดส: 'Benz',
+  เมอซิเดส: 'Benz',
+  บีเอ็มดับเบิลยู: 'BMW',
+  เอ็มจี: 'MG',
+  ฮุนได: 'Hyundai',
+  เกีย: 'Kia',
+  เทสล่า: 'Tesla',
+  เชฟโรเลต: 'Chevrolet',
+  เลกซัส: 'Lexus',
+  ซูบารุ: 'Subaru',
+  วอลโว่: 'Volvo',
+  ฮาวาล: 'Haval',
+};
+
+/** Lower case and without spaces or punctuation, to compare "Honda/City" with "honda" */
+const squashAlnum = (s: string) => s.toLowerCase().replace(/[^a-z0-9ก-๙]/g, '');
+
+/**
+ * The brand from a "brand/model" text: "Honda/City", "Benz a200", "Mazda2" and "โตโยต้า/ยาริส" give
+ * Honda, Benz, Mazda and Toyota. Text that starts with no known brand is kept as typed.
+ */
 export function normalizeBrand(raw: string): string {
   const cleaned = raw.trim();
-  return matchOption(cleaned, VEHICLE_BRANDS.filter((b) => b !== 'อื่นๆ')) || cleaned;
+  if (!cleaned) return '';
+  const brands = VEHICLE_BRANDS.filter((b) => b !== 'อื่นๆ');
+  const exact = matchOption(cleaned, brands);
+  if (exact) return exact;
+
+  const key = squashAlnum(cleaned);
+  const thai = Object.keys(BRAND_ALIASES).find((alias) => key.startsWith(alias));
+  if (thai) return BRAND_ALIASES[thai];
+  const prefix = [...brands].sort((a, b) => b.length - a.length).find((b) => key.startsWith(squashAlnum(b)));
+  return prefix ?? cleaned;
+}
+
+/** A colour written inside the model text ("Haval สีดำ", "Honda Jazz (GE สีเทา)"): { rest: text without it, color } */
+export function splitColorFromText(raw: string): { rest: string; color: string } {
+  const m = /สี\s*([ก-๙]+)/.exec(raw);
+  if (!m) return { rest: raw, color: '' };
+  return { rest: raw.replace(m[0], ' ').replace(/\(\s*\)/g, ' ').replace(/\s+\)/g, ')').replace(/\s+/g, ' ').trim(), color: m[1] };
 }
 
 export function normalizeDepartment(raw: string): { select: string; custom: string } {
@@ -183,6 +235,8 @@ export interface ExtractedVehicle {
   plate?: string | null;
   province?: string | null;
   floor?: string | null;
+  /** The car's own department (a "สังกัด" column), when the table has one */
+  department?: string | null;
   startDate?: string | null;
   endDate?: string | null;
   uncertain?: string[] | null;
@@ -243,6 +297,7 @@ const describeVehicle = (v: ExtractedVehicle): string =>
     .filter(Boolean)
     .join(' ') || 'ไม่ทราบรายละเอียด';
 
+const DEFAULT_PROVINCE = 'กรุงเทพมหานคร';
 const UNCERTAIN_FIELDS: RowField[] = ['brand', 'color', 'plate', 'province', 'floor'];
 
 /**
@@ -251,7 +306,12 @@ const UNCERTAIN_FIELDS: RowField[] = ['brand', 'color', 'plate', 'province', 'fl
  */
 export function draftFromExtraction(doc: ExtractedDocument, fallbackDate: string): ImportDraft {
   const skipped: SkippedVehicle[] = [];
-  const items: Array<{ row: DraftRow; start: string; end: string }> = [];
+  const items: Array<{ row: DraftRow; start: string; end: string; dept: string }> = [];
+  const departmentName = (raw: string): string => {
+    const d = normalizeDepartment(raw);
+    return d.select === 'อื่นๆ' ? d.custom : d.select;
+  };
+  const docDept = departmentName(str(doc.department));
   const docStart = isoOrEmpty(doc.startDate);
   const docEnd = isoOrEmpty(doc.endDate);
 
@@ -267,13 +327,16 @@ export function draftFromExtraction(doc: ExtractedDocument, fallbackDate: string
     });
     if (v.kind === 'unknown') flags.add('type');
 
-    const brand = normalizeBrand(str(v.brand));
+    // Some tables have no colour column and write it inside the model text
+    const fromText = splitColorFromText(str(v.brand));
+    const brand = normalizeBrand(fromText.rest);
     if (brand && !matchOption(brand, VEHICLE_BRANDS)) flags.add('brand');
-    const color = normalizeColor(str(v.color));
+    const color = normalizeColor(str(v.color) || fromText.color);
     if (color && !matchOption(color, VEHICLE_COLORS)) flags.add('color');
     const plate = cleanPlate(thaiDigitsToArabic(str(v.plate)));
-    const province = normalizeProvince(str(v.province));
-    if (str(v.province) && !province) flags.add('province');
+    // Tables often leave the province out: most plates are Bangkok, so start from that and ask for a check
+    const province = str(v.province) ? normalizeProvince(str(v.province)) : DEFAULT_PROVINCE;
+    if (!str(v.province) || !province) flags.add('province');
     if (!str(v.floor)) flags.add('floor');
     const floor: 'B1' | 'B2' = /B\s*2|ชั้น\s*2|^2$/i.test(str(v.floor)) ? 'B2' : 'B1';
 
@@ -284,6 +347,7 @@ export function draftFromExtraction(doc: ExtractedDocument, fallbackDate: string
       row: newRow({ brand, color, plate, province, floor, flags: [...flags] }),
       start,
       end: end && start && end < start ? start : end,
+      dept: (str(v.department) ? departmentName(str(v.department)) : '') || docDept,
     });
   }
 
@@ -310,11 +374,25 @@ export function draftFromExtraction(doc: ExtractedDocument, fallbackDate: string
     }
   });
 
-  const dept = normalizeDepartment(str(doc.department));
+  // Same for the department: the one most cars have is shared, the others keep their own ("สังกัด" column)
+  const deptTally = new Map<string, number>();
+  items.forEach(({ dept }) => deptTally.set(dept, (deptTally.get(dept) ?? 0) + 1));
+  let commonDept = docDept;
+  let bestDept = 0;
+  deptTally.forEach((count, d) => {
+    if (count > bestDept || (count === bestDept && d === docDept)) {
+      bestDept = count;
+      commonDept = d;
+    }
+  });
+  items.forEach(({ row, dept }) => {
+    if (dept && dept !== commonDept) row.department = dept;
+  });
+
   return {
     rows: items.map((i) => i.row),
     common: {
-      department: dept.select === 'อื่นๆ' ? dept.custom : dept.select,
+      department: commonDept,
       subDepartment: str(doc.subDepartment),
       startDate: commonStart,
       endDate: commonEnd || commonStart,
