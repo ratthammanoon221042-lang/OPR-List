@@ -207,3 +207,11 @@ export function parseDmy(text: string): string {
   const iso = `${String(year).padStart(4, '0')}-${m[2]}-${m[1]}`;
   return isIsoDate(iso) ? iso : '';
 }
+
+/**
+ * When a permit was saved, as shown in the list: "8 ต.ค. 2569 15:30 น."; "-" if the value is not a date
+ */
+export function formatSavedAt(createdAt: string): string {
+  const date = new Date(createdAt);
+  return Number.isNaN(date.getTime()) ? '-' : formatThaiDateTime(date);
+}

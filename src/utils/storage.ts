@@ -63,3 +63,22 @@ export function saveLastSynced(date: Date): void {
     // not critical
   }
 }
+
+const SHOW_SAVED_AT_KEY = 'thai_overnight_show_saved_at_v1';
+
+/** Whether the "บันทึกเมื่อ" column / line is shown in the list (hidden by default) */
+export function loadShowSavedAt(): boolean {
+  try {
+    return localStorage.getItem(SHOW_SAVED_AT_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function saveShowSavedAt(show: boolean): void {
+  try {
+    localStorage.setItem(SHOW_SAVED_AT_KEY, show ? '1' : '0');
+  } catch {
+    // not critical
+  }
+}
