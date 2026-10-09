@@ -214,4 +214,28 @@ describe('draftFromExtraction', () => {
     const draft = draftFromExtraction({ department: 'กองกลาง', vehicles: doc.vehicles }, '2026-10-01');
     expect(draft.common.department).toBe('กองกลาง');
   });
+
+  it('Thai digits left in a plate become 0-9; a letter with one car in the body and a table of others both work', () => {
+    const draft = draftFromExtraction(
+      {
+        department: 'กองการสื่อสารโทรคมนาคม',
+        startDate: '2026-09-30',
+        endDate: '2026-10-02',
+        vehicles: [
+          { kind: 'car', plate: '๙กฎ ๓๔๕๓', province: 'กรุงเทพมหานคร', floor: 'B2', uncertain: ['brand', 'color'] },
+          { kind: 'car', brand: 'Mazda', color: 'เทา', plate: 'กษ๖๐๐๙', province: 'พระนครศรีอยุธยา', floor: 'B2', startDate: '2026-09-30', endDate: '2026-09-30' },
+          { kind: 'car', brand: 'Isuzu', color: 'เทา', plate: 'ศฮ 9183', province: 'กทม.', floor: 'B2', startDate: '2026-09-30', endDate: '2026-09-30' },
+        ],
+      },
+      '2026-10-09'
+    );
+    expect(draft.rows.map((r) => r.plate)).toEqual(['9กฎ3453', 'กษ6009', 'ศฮ9183']);
+    expect(draft.rows[1].province).toBe('พระนครศรีอยุธยา');
+    // the two table cars share one range (the most common); the letter's own car keeps the document range
+    expect(draft.common).toMatchObject({ startDate: '2026-09-30', endDate: '2026-09-30' });
+    expect(draft.rows[0]).toMatchObject({ startDate: '2026-09-30', endDate: '2026-10-02' });
+    expect(draft.rows[0].flags).toEqual(expect.arrayContaining(['brand', 'color']));
+    expect(isRowComplete(draft.rows[0])).toBe(false); // brand and colour still to fill in
+    expect(draft.common.department).toBe('กองการสื่อสารโทรคมนาคม');
+  });
 });

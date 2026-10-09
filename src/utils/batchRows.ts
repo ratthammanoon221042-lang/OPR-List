@@ -211,6 +211,9 @@ export interface ImportDraft {
 }
 
 const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
+
+/** Thai digits (๐-๙) to 0-9, in case the reader left some in a plate */
+export const thaiDigitsToArabic = (text: string): string => text.replace(/[๐-๙]/g, (d) => String(d.charCodeAt(0) - 0x0e50));
 const isoOrEmpty = (v: unknown): string => {
   const s = str(v);
   if (!isIsoDate(s)) return '';
@@ -252,7 +255,7 @@ export function draftFromExtraction(doc: ExtractedDocument, fallbackDate: string
     if (brand && !matchOption(brand, VEHICLE_BRANDS)) flags.add('brand');
     const color = normalizeColor(str(v.color));
     if (color && !matchOption(color, VEHICLE_COLORS)) flags.add('color');
-    const plate = cleanPlate(str(v.plate));
+    const plate = cleanPlate(thaiDigitsToArabic(str(v.plate)));
     const province = normalizeProvince(str(v.province));
     if (str(v.province) && !province) flags.add('province');
     if (!str(v.floor)) flags.add('floor');

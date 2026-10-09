@@ -300,6 +300,70 @@ describe('extract (read cars from photos)', () => {
     expect((await denied.json()).message).toContain('GEMINI_API_KEY');
   });
 
+  describe('when Google AI is busy', () => {
+    const ok = () => new Response(JSON.stringify(geminiAnswer({ vehicles: [{ kind: 'car', plate: '1กก1111' }] })), { status: 200 });
+    const busy = () => new Response(JSON.stringify({ error: { code: 503, status: 'UNAVAILABLE', message: 'The model is overloaded' } }), { status: 503 });
+    const fast = { GEMINI_RETRY_DELAY_MS: '0' };
+    /** Answers Gemini calls from a list, in order, and records which model each call used */
+    const sequence = (answers: Array<() => Response>) => {
+      const models: string[] = [];
+      const mock = vi.fn().mockImplementation((url: string) => {
+        if (String(url).startsWith(GEMINI)) {
+          models.push(String(url).split('/models/')[1].split(':')[0]);
+          return Promise.resolve((answers.shift() ?? busy)());
+        }
+        return Promise.resolve(new Response(JSON.stringify({ status: 'success' }), { status: 200 }));
+      });
+      vi.stubGlobal('fetch', mock);
+      return models;
+    };
+
+    it('tries the same model once more after a 503', async () => {
+      const models = sequence([busy, ok]);
+      const res = await extract({}, fast);
+      expect(res.status).toBe(200);
+      expect(models).toEqual(['gemini-flash-latest', 'gemini-flash-latest']);
+    });
+
+    it('switches to the backup model when the main one stays busy', async () => {
+      const models = sequence([busy, busy, ok]);
+      const res = await extract({}, fast);
+      expect(res.status).toBe(200);
+      expect(models).toEqual(['gemini-flash-latest', 'gemini-flash-latest', 'gemini-flash-lite-latest']);
+    });
+
+    it('a full main-model quota moves on to the backup model straight away', async () => {
+      const models = sequence([() => new Response('{}', { status: 429 }), ok]);
+      expect((await extract({}, fast)).status).toBe(200);
+      expect(models).toEqual(['gemini-flash-latest', 'gemini-flash-lite-latest']);
+    });
+
+    it('GEMINI_FALLBACK_MODELS can be changed, and a rejected key does not try other models', async () => {
+      const models = sequence([() => new Response('{}', { status: 404 }), ok]);
+      expect((await extract({}, { ...fast, GEMINI_FALLBACK_MODELS: 'my-backup' })).status).toBe(200);
+      expect(models).toEqual(['gemini-flash-latest', 'my-backup']);
+
+      const denied = sequence([() => new Response('{}', { status: 403 })]);
+      expect((await extract({}, fast)).status).toBe(502);
+      expect(denied).toHaveLength(1);
+    });
+
+    it('gives a clear message when every model is busy', async () => {
+      const models = sequence([busy, busy, busy, busy]);
+      const res = await extract({}, fast);
+      expect(res.status).toBe(502);
+      expect((await res.json()).message).toContain('หนาแน่น');
+      expect(models).toHaveLength(4);
+    });
+
+    it('shows Google\'s own reason for an unexpected error', async () => {
+      const odd = () => new Response(JSON.stringify({ error: { status: 'INTERNAL_X' } }), { status: 418 });
+      sequence([odd, odd]);
+      const res = await extract({}, fast);
+      expect((await res.json()).message).toContain('HTTP 418: INTERNAL_X');
+    });
+  });
+
   it('copes with an empty or unreadable AI answer', async () => {
     vi.stubGlobal('fetch', upstream({ gemini: new Response(JSON.stringify({ candidates: [] }), { status: 200 }) }));
     expect((await extract()).status).toBe(502);
