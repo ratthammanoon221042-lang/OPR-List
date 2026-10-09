@@ -45,6 +45,23 @@ describe('rows', () => {
   });
 });
 
+describe('typed provinces', () => {
+  it('a short or prefixed name counts as the province; text that is no province counts as missing', () => {
+    expect(missingFields(car({ province: 'กทม.' }))).toEqual([]);
+    expect(missingFields(car({ province: 'จ.นนทบุรี' }))).toEqual([]);
+    expect(missingFields(car({ province: 'นนท' }))).toEqual(['province']);
+    expect(isRowComplete(car({ province: 'ไม่ใช่จังหวัด' }))).toBe(false);
+    const [p] = buildPermits([car({ province: 'กทม.' })], common);
+    expect(p.province).toBe('กรุงเทพมหานคร');
+  });
+
+  it('clashes compare the full province name, however it was typed', () => {
+    const row = car({ province: 'กทม.' });
+    const clashes = findBatchClashes([row], { startDate: '2026-10-09', endDate: '2026-10-10' }, [saved()]);
+    expect(clashes.get(row.key)?.existing).toHaveLength(1);
+  });
+});
+
 describe('buildPermits', () => {
   it('gives every car its own permit with the shared department and dates, a clean plate and a unique id', () => {
     const permits = buildPermits(

@@ -16,6 +16,8 @@ import {
   isRowEmpty,
   missingFields,
   newRow,
+  normalizeProvince,
+  rowProvince,
   rowRange,
 } from '../utils/batchRows';
 import { X, Car, Calendar, CheckCircle2, AlertCircle, AlertTriangle, Building2, Camera, Plus } from 'lucide-react';
@@ -191,8 +193,13 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
     }
     const firstBad = rows.findIndex((r) => !isRowEmpty(r) && missingFields(r).length > 0);
     if (firstBad >= 0) {
-      const names = missingFields(rows[firstBad]).map((f) => FIELD_LABEL[f]).join(', ');
-      setErrorMsg(`แถวที่ ${firstBad + 1} ยังกรอกไม่ครบ (ขาด: ${names})`);
+      const missing = missingFields(rows[firstBad]);
+      const names = missing.map((f) => FIELD_LABEL[f]).join(', ');
+      const badProvince = missing.includes('province') && rows[firstBad].province.trim();
+      setErrorMsg(
+        `แถวที่ ${firstBad + 1} ยังกรอกไม่ครบ (ขาด: ${names})` +
+          (badProvince ? ` · "${rows[firstBad].province.trim()}" ไม่ตรงกับชื่อจังหวัดในรายการ ให้เลือกจากรายการที่ขึ้นมา` : '')
+      );
       return;
     }
     const badRange = rows.findIndex((r) => {
@@ -217,7 +224,7 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
         id: editingPermit.id,
         createdAt: editingPermit.createdAt,
         licensePlate: cleanPlate(row.plate),
-        province: row.province.trim(),
+        province: rowProvince(row),
         vehicleBrand: row.brand.trim(),
         vehicleColor: row.color.trim(),
         parkingFloor: row.floor,
@@ -238,7 +245,8 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
 
   const cellClass = (row: DraftRow, field: 'brand' | 'color' | 'plate' | 'province', clash: boolean) => {
     const started = !isRowEmpty(row);
-    const missing = started && !(field === 'plate' ? cleanPlate(row.plate) : row[field].trim());
+    const value = field === 'plate' ? cleanPlate(row.plate) : field === 'province' ? rowProvince(row) : row[field].trim();
+    const missing = started && !value;
     if (row.flags.includes(field)) return `${inputBase} bg-amber-100 border-amber-400`;
     if (missing) return `${inputBase} border-rose-400 bg-white`;
     return `${inputBase} ${clash ? 'bg-white border-rose-200' : 'border-slate-300'}`;
@@ -465,6 +473,11 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
                   <option key={b} value={b} />
                 ))}
               </datalist>
+              <datalist id="province-options">
+                {PROVINCE_OPTIONS.map((p) => (
+                  <option key={p} value={p} />
+                ))}
+              </datalist>
               <datalist id="color-options">
                 {VEHICLE_COLORS.filter((c) => c !== 'อื่นๆ').map((c) => (
                   <option key={c} value={c} />
@@ -576,19 +589,20 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
                       </div>
 
                       <div className="col-span-2 md:col-span-1 min-w-0">
-                        <select
+                        <input
+                          type="text"
+                          list="province-options"
                           aria-label={`จังหวัด แถวที่ ${i + 1}`}
+                          placeholder="พิมพ์หรือเลือกจังหวัด"
                           value={row.province}
                           onChange={(e) => changeRow(row.key, { province: e.target.value }, ['province'])}
+                          // "กทม." or "จ.นนทบุรี" becomes the full name when leaving the field
+                          onBlur={(e) => {
+                            const full = normalizeProvince(e.target.value);
+                            if (full && full !== row.province) changeRow(row.key, { province: full });
+                          }}
                           className={cellClass(row, 'province', !!clash)}
-                        >
-                          <option value="">เลือกจังหวัด</option>
-                          {PROVINCE_OPTIONS.map((p) => (
-                            <option key={p} value={p}>
-                              {p}
-                            </option>
-                          ))}
-                        </select>
+                        />
                         {clash && (
                           <span className="block mt-1 text-sm text-rose-700">
                             {clash.existing.length > 0

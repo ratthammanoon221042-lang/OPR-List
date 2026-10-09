@@ -49,12 +49,16 @@ export const newRow = (over: Partial<DraftRow> = {}): DraftRow => ({
 /** A row nobody typed into (the default floor does not count) is skipped when saving */
 export const isRowEmpty = (r: DraftRow): boolean => !r.brand.trim() && !r.color.trim() && !r.plate.trim() && !r.province.trim();
 
+/** The province as the list spells it ("กทม." and "จ.นนทบุรี" are understood), or '' when it is not a province */
+export const rowProvince = (r: DraftRow): string => normalizeProvince(r.province);
+
+/** Brand, colour, plate and a province from the list are needed; typed text that is no province counts as missing */
 export const missingFields = (r: DraftRow): Array<'brand' | 'color' | 'plate' | 'province'> => {
   const missing: Array<'brand' | 'color' | 'plate' | 'province'> = [];
   if (!r.brand.trim()) missing.push('brand');
   if (!r.color.trim()) missing.push('color');
   if (!cleanPlate(r.plate)) missing.push('plate');
-  if (!r.province.trim()) missing.push('province');
+  if (!rowProvince(r)) missing.push('province');
   return missing;
 };
 
@@ -75,7 +79,7 @@ export function buildPermits(rows: DraftRow[], common: BatchCommon, now = new Da
         id: generatePermitId(startDate),
         createdAt: now.toISOString(),
         licensePlate: cleanPlate(r.plate),
-        province: r.province.trim(),
+        province: rowProvince(r),
         vehicleBrand: r.brand.trim(),
         vehicleColor: r.color.trim(),
         parkingFloor: r.floor,
@@ -107,7 +111,7 @@ export function findBatchClashes(
     const range = rowRange(row, common);
     if (!isIsoDate(range.startDate) || !isIsoDate(range.endDate) || range.endDate < range.startDate) return;
     const plate = cleanPlate(row.plate);
-    const province = row.province.trim();
+    const province = rowProvince(row);
 
     const existing = existingPermits.filter(
       (p) => cleanPlate(p.licensePlate) === plate && p.province === province && dateRangesOverlap(p, range)
@@ -115,7 +119,7 @@ export function findBatchClashes(
     const inBatch = active.some((other, j) => {
       if (j === i) return false;
       const o = rowRange(other, common);
-      return cleanPlate(other.plate) === plate && other.province.trim() === province && dateRangesOverlap(o, range);
+      return cleanPlate(other.plate) === plate && rowProvince(other) === province && dateRangesOverlap(o, range);
     });
     if (existing.length || inBatch) result.set(row.key, { existing, inBatch });
   });
