@@ -75,7 +75,7 @@ export const DateField: React.FC<DateFieldProps> = ({
               if (parseDmy(draft)) setDraft(isoToDmy(parseDmy(draft)));
             }}
             aria-invalid={invalid}
-            className={`w-full text-xs sm:text-sm border rounded-lg pl-3 pr-9 py-2 bg-white focus:outline-hidden focus:ring-2 font-mono ${
+            className={`w-full text-base border rounded-lg pl-3 pr-10 py-2.5 bg-white focus:outline-hidden focus:ring-2 font-mono ${
               invalid
                 ? "border-rose-400 focus:ring-rose-400"
                 : "border-slate-300 focus:ring-blue-500"
@@ -107,7 +107,7 @@ export const DateField: React.FC<DateFieldProps> = ({
           />
       </div>
       {invalid && (
-        <p className="text-[11px] text-rose-600 mt-0.5">
+        <p className="text-xs text-rose-600 mt-0.5">
           วันที่ไม่ถูกต้อง ใช้รูปแบบ วว/ดด/ปปปป เช่น 08/10/2026
         </p>
       )}

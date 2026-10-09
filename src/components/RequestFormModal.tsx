@@ -61,7 +61,7 @@ export const RequestFormModal: React.FC<RequestFormModalProps> = ({ isOpen, inst
 };
 
 const inputBase =
-  'w-full text-sm border rounded-lg px-2.5 py-2 bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500 transition-colors';
+  'w-full text-base border rounded-lg px-3 py-2.5 bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500 transition-colors';
 
 const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'>> = ({
   onClose,
@@ -248,20 +248,20 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex min-h-screen items-start justify-center p-2 sm:p-5">
       <div
         className={`bg-white rounded-2xl w-full shadow-2xl border border-slate-200 overflow-hidden my-2 sm:my-6 max-h-[calc(100vh-1rem)] sm:max-h-[calc(100vh-3rem)] flex flex-col animate-in fade-in zoom-in-95 duration-150 ${
-          isEdit ? 'max-w-4xl' : 'max-w-6xl'
+          isEdit ? 'max-w-5xl' : 'max-w-[min(90vw,1680px)]'
         }`}
       >
         {/* Header: stays at the top while the body scrolls */}
-        <div className="shrink-0 bg-slate-900 text-white px-4 sm:px-6 py-3.5 flex items-center justify-between gap-3 border-b border-slate-800">
+        <div className="shrink-0 bg-slate-900 text-white px-5 sm:px-8 py-4 flex items-center justify-between gap-3 border-b border-slate-800">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center shrink-0 shadow-inner">
+            <div className="w-11 h-11 rounded-xl bg-emerald-600 flex items-center justify-center shrink-0 shadow-inner">
               <Car className="w-5 h-5 text-white" />
             </div>
             <div className="min-w-0">
-              <h3 className="text-base sm:text-lg font-bold">
+              <h3 className="text-lg sm:text-2xl font-bold">
                 {isEdit ? 'แก้ไขรายการขออนุญาตจอดค้างคืน' : 'เพิ่มรายการขออนุญาตจอดค้างคืน'}
               </h3>
-              <p className="text-xs sm:text-sm text-slate-300">
+              <p className="text-sm sm:text-base text-slate-300">
                 {isEdit
                   ? 'แก้ไขข้อมูลรถ หน่วยงาน และช่วงวันที่ขอจอด'
                   : 'กรอกรถหลายคันในครั้งเดียวได้ ใช้หน่วยงานและวันที่ชุดเดียวกัน'}
@@ -274,10 +274,10 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
                 type="button"
                 onClick={onOpenImport}
                 aria-label="กรอกจากรูป"
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-xl border border-white/25 bg-white/10 hover:bg-white/20 transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-4 py-2.5 text-base font-medium rounded-xl border border-white/25 bg-white/10 hover:bg-white/20 transition-colors cursor-pointer"
                 title="อ่านข้อมูลจากภาพหรือไฟล์หนังสือ"
               >
-                <Camera className="w-4 h-4" />
+                <Camera className="w-5 h-5" />
                 <span className="hidden sm:inline">กรอกจากรูป</span>
               </button>
             )}
@@ -293,9 +293,9 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
         </div>
 
         <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 pb-24">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-5 pb-24">
             {errorMsg && (
-              <div role="alert" className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-sm rounded-xl flex items-center gap-2">
+              <div role="alert" className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-base rounded-xl flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
                 <span>{errorMsg}</span>
               </div>
@@ -303,7 +303,7 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
 
             {prefill && !isEdit && (
               <div className="space-y-2.5">
-                <div className="flex flex-wrap items-center gap-2 text-sm">
+                <div className="flex flex-wrap items-center gap-2 text-base">
                   <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300">
                     อ่านได้ {prefill.rows.length} คัน
                   </span>
@@ -332,32 +332,32 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
                   )}
                 </div>
                 {prefill.skipped.length > 0 && (
-                  <details className="border border-slate-200 rounded-xl bg-slate-50 px-3 py-2 text-sm">
+                  <details className="border border-slate-200 rounded-xl bg-slate-50 px-4 py-3 text-base">
                     <summary className="cursor-pointer font-medium text-slate-700">
                       ดูรายการรถจักรยานยนต์ที่ข้าม ({prefill.skipped.length})
                     </summary>
                     <ul className="mt-2 space-y-1">
                       {prefill.skipped.map((s, i) => (
-                        <li key={i} className="flex flex-wrap justify-between gap-x-3 border-b border-slate-200 last:border-0 py-1">
+                        <li key={i} className="flex flex-wrap justify-between gap-x-3 border-b border-slate-200 last:border-0 py-1.5">
                           <span>{s.text}</span>
-                          <span className="text-slate-500 text-xs">{s.reason}</span>
+                          <span className="text-slate-500 text-sm">{s.reason}</span>
                         </li>
                       ))}
                     </ul>
-                    <p className="mt-1.5 text-xs text-slate-500">
+                    <p className="mt-1.5 text-sm text-slate-500">
                       ระบบรับเฉพาะรถยนต์ ถ้าข้ามผิด (เช่นเป็นรถยนต์จริง) ให้กดปุ่ม "เพิ่มรถอีกคัน" แล้วกรอกเอง
                     </p>
                   </details>
                 )}
-                {prefill.notes && <p className="text-xs text-slate-500">หมายเหตุจากระบบอ่านเอกสาร: {prefill.notes}</p>}
-                <p className="text-xs text-slate-500">
+                {prefill.notes && <p className="text-sm text-slate-500">หมายเหตุจากระบบอ่านเอกสาร: {prefill.notes}</p>}
+                <p className="text-sm text-slate-500">
                   ระบบยังไม่ได้บันทึกอะไร ตรวจและแก้ไขข้อมูลให้ถูกต้องก่อนกดบันทึก ชั้นที่จอดตั้งต้นเป็น B1 ถ้าเอกสารไม่ระบุ
                 </p>
               </div>
             )}
 
             {needsConfirm && (
-              <div role="alert" className="p-3 bg-amber-50 border border-amber-300 text-amber-900 text-sm rounded-xl space-y-1">
+              <div role="alert" className="p-4 bg-amber-50 border border-amber-300 text-amber-900 text-base rounded-xl space-y-1">
                 <div className="flex items-center gap-2 font-bold">
                   <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
                   <span>มี {clashes.size} คันที่ขออนุญาตไว้แล้วในช่วงวันที่ซ้อนกัน (แถวสีแดง)</span>
@@ -367,7 +367,7 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
             )}
 
             {/* Shared by every car in this batch: one line */}
-            <div className="grid grid-cols-2 xl:grid-cols-[1.3fr_1.3fr_1fr_1fr_auto] gap-3 p-3.5 sm:p-4 rounded-xl border border-slate-200 bg-slate-50 items-end">
+            <div className="grid grid-cols-2 xl:grid-cols-[1.3fr_1.3fr_1fr_1fr_auto] gap-4 p-4 sm:p-5 rounded-xl border border-slate-200 bg-slate-50 items-end">
               <div className="min-w-0 col-span-2 sm:col-span-1">
                 <DropdownSelect
                   label="หน่วยงาน"
@@ -397,10 +397,10 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
 
               <div className="min-w-0 col-span-2 sm:col-span-1">
                 <div className="flex items-center justify-between mb-1">
-                  <label htmlFor="permit-sub-department" className="block text-xs font-semibold text-slate-700">
+                  <label htmlFor="permit-sub-department" className="block text-sm font-semibold text-slate-700">
                     หน่วยงานย่อย
                   </label>
-                  <span className="text-[11px] text-slate-400 font-normal">(ไม่บังคับ)</span>
+                  <span className="text-xs text-slate-400 font-normal">(ไม่บังคับ)</span>
                 </div>
                 <input
                   id="permit-sub-department"
@@ -413,7 +413,7 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
               </div>
 
               <div className="min-w-0">
-                <label htmlFor="permit-start-date" className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1">
+                <label htmlFor="permit-start-date" className="block text-sm font-semibold text-slate-700 mb-1 flex items-center gap-1">
                   <Calendar className="w-3.5 h-3.5 text-slate-500" />
                   <span>วันที่เริ่มจอด <span className="text-rose-500">*</span></span>
                 </label>
@@ -427,11 +427,11 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
                     if (iso && endDate < iso) setEndDate(iso);
                   }}
                 />
-                <span className="text-[11px] text-slate-500 mt-0.5 block">{formatThaiDate(startDate, 'short')}</span>
+                <span className="text-xs sm:text-sm text-slate-500 mt-0.5 block">{formatThaiDate(startDate, 'short')}</span>
               </div>
 
               <div className="min-w-0">
-                <label htmlFor="permit-end-date" className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1">
+                <label htmlFor="permit-end-date" className="block text-sm font-semibold text-slate-700 mb-1 flex items-center gap-1">
                   <Calendar className="w-3.5 h-3.5 text-slate-500" />
                   <span>วันที่สิ้นสุดจอด <span className="text-rose-500">*</span></span>
                 </label>
@@ -445,11 +445,11 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
                     setAckClash(false);
                   }}
                 />
-                <span className="text-[11px] text-slate-500 mt-0.5 block">{formatThaiDate(endDate, 'short')}</span>
+                <span className="text-xs sm:text-sm text-slate-500 mt-0.5 block">{formatThaiDate(endDate, 'short')}</span>
               </div>
 
               <div
-                className={`col-span-2 xl:col-span-1 self-start xl:mt-[1.4rem] px-3.5 py-2 rounded-xl text-sm font-bold text-center whitespace-nowrap border ${
+                className={`col-span-2 xl:col-span-1 self-start xl:mt-[1.6rem] px-4 py-2.5 rounded-xl text-base font-bold text-center whitespace-nowrap border ${
                   datesValid ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-rose-50 text-rose-700 border-rose-200'
                 }`}
                 title="นับวันสิ้นสุดด้วย"
@@ -471,7 +471,7 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
                 ))}
               </datalist>
 
-              <div className="hidden md:grid grid-cols-[2.25rem_minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,1.1fr)_minmax(0,1.3fr)_8rem_2.25rem] gap-2 px-2 pb-1.5 text-xs font-semibold text-slate-600">
+              <div className="hidden md:grid grid-cols-[2.5rem_minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,1.1fr)_minmax(0,1.3fr)_9rem_2.75rem] gap-3 px-3 pb-2 text-sm font-semibold text-slate-600">
                 <span className="text-center">#</span>
                 <span>ยี่ห้อ <span className="text-rose-500">*</span></span>
                 <span>สี <span className="text-rose-500">*</span></span>
@@ -488,11 +488,11 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
                   return (
                     <div
                       key={row.key}
-                      className={`grid grid-cols-2 md:grid-cols-[2.25rem_minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,1.1fr)_minmax(0,1.3fr)_8rem_2.25rem] gap-2 p-2 items-start ${
+                      className={`grid grid-cols-2 md:grid-cols-[2.5rem_minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,1.1fr)_minmax(0,1.3fr)_9rem_2.75rem] gap-3 p-3 items-start ${
                         clash ? 'bg-rose-50' : 'bg-white'
                       }`}
                     >
-                      <div className="col-span-2 md:col-span-1 flex items-center justify-between md:justify-center md:h-[2.375rem] text-sm text-slate-500 font-semibold tabular-nums">
+                      <div className="col-span-2 md:col-span-1 flex items-center justify-between md:justify-center md:h-[3rem] text-base text-slate-500 font-semibold tabular-nums">
                         <span>
                           <span className="md:hidden">คันที่ </span>
                           {i + 1}
@@ -504,7 +504,7 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
                             aria-label={`ลบแถวที่ ${i + 1}`}
                             className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
                           >
-                            <X className="w-4 h-4" />
+                            <X className="w-5 h-5" />
                           </button>
                         )}
                       </div>
@@ -521,7 +521,7 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
                           className={cellClass(row, 'brand', !!clash)}
                         />
                         {row.flags.includes('type') && (
-                          <span className="block mt-1 text-xs text-amber-700">
+                          <span className="block mt-1 text-sm text-amber-700">
                             ไม่แน่ใจว่าเป็นรถยนต์{' '}
                             <button
                               type="button"
@@ -562,7 +562,7 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
                           className={`${cellClass(row, 'plate', !!clash)} font-semibold tracking-wide`}
                         />
                         {row.startDate && row.endDate && (
-                          <span className="block mt-1 text-xs text-blue-700">
+                          <span className="block mt-1 text-sm text-blue-700">
                             วันที่ของคันนี้: {formatThaiDate(range.startDate, 'short')} - {formatThaiDate(range.endDate, 'short')}{' '}
                             <button
                               type="button"
@@ -590,7 +590,7 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
                           ))}
                         </select>
                         {clash && (
-                          <span className="block mt-1 text-xs text-rose-700">
+                          <span className="block mt-1 text-sm text-rose-700">
                             {clash.existing.length > 0
                               ? `ซ้ำ: ขอไว้แล้ว ${formatThaiDate(clash.existing[0].startDate, 'short')} - ${formatThaiDate(clash.existing[0].endDate, 'short')} (ชั้น ${clash.existing[0].parkingFloor})`
                               : 'ซ้ำกับแถวอื่นในชุดนี้'}
@@ -611,7 +611,7 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
                             type="button"
                             aria-pressed={row.floor === f}
                             onClick={() => changeRow(row.key, { floor: f }, ['floor'])}
-                            className={`flex-1 px-4 py-2 text-sm font-bold cursor-pointer transition-colors ${
+                            className={`flex-1 px-5 py-2.5 text-base font-bold cursor-pointer transition-colors ${
                               row.floor === f
                                 ? f === 'B1'
                                   ? 'bg-blue-600 text-white'
@@ -629,9 +629,9 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
                           type="button"
                           onClick={() => removeRow(row.key)}
                           aria-label={`ลบแถวที่ ${i + 1}`}
-                          className="hidden md:inline-flex items-center justify-center h-[2.375rem] rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                          className="hidden md:inline-flex items-center justify-center h-[3rem] rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
                         >
-                          <X className="w-4 h-4" />
+                          <X className="w-5 h-5" />
                         </button>
                       )}
                     </div>
@@ -644,12 +644,12 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
                   <button
                     type="button"
                     onClick={() => addRow()}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium rounded-xl border border-dashed border-blue-400 bg-blue-50 text-blue-700 hover:bg-blue-100 cursor-pointer transition-colors"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 text-base font-medium rounded-xl border border-dashed border-blue-400 bg-blue-50 text-blue-700 hover:bg-blue-100 cursor-pointer transition-colors"
                   >
                     <Plus className="w-4 h-4" />
                     <span>เพิ่มรถอีกคัน</span>
                   </button>
-                  <span className="text-xs text-slate-500">
+                  <span className="text-sm text-slate-500">
                     กด Enter ที่ช่องทะเบียนเพื่อขึ้นแถวใหม่ · เว้นแถวว่างไว้ได้ ระบบข้ามให้
                   </span>
                 </div>
@@ -657,8 +657,8 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
             </div>
           </div>
 
-          <div className="shrink-0 px-4 sm:px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2.5">
-            <span className="text-sm text-slate-600" aria-live="polite">
+          <div className="shrink-0 px-5 sm:px-8 py-4 border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2.5">
+            <span className="text-base text-slate-600" aria-live="polite">
               {incompleteCount > 0
                 ? `มี ${incompleteCount} แถวที่ยังกรอกไม่ครบ`
                 : `พร้อมบันทึก ${completeRows.length} คัน${datesValid ? ` · ${nights} คืน` : ''}`}
@@ -667,15 +667,15 @@ const RequestForm: React.FC<Omit<RequestFormModalProps, 'isOpen' | 'instanceKey'
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2.5 border border-slate-300 hover:bg-slate-100 text-slate-700 text-sm font-semibold rounded-xl transition-colors cursor-pointer"
+                className="px-5 py-3 border border-slate-300 hover:bg-slate-100 text-slate-700 text-base font-semibold rounded-xl transition-colors cursor-pointer"
               >
                 ยกเลิก
               </button>
               <button
                 type="submit"
-                className={`px-5 py-2.5 ${needsConfirm ? 'bg-amber-600 hover:bg-amber-500' : 'bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700'} text-white text-sm font-bold rounded-xl shadow-md transition-colors cursor-pointer flex items-center gap-1.5`}
+                className={`px-6 py-3 ${needsConfirm ? 'bg-amber-600 hover:bg-amber-500' : 'bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700'} text-white text-base font-bold rounded-xl shadow-md transition-colors cursor-pointer flex items-center gap-1.5`}
               >
-                <CheckCircle2 className="w-4 h-4" />
+                <CheckCircle2 className="w-5 h-5" />
                 <span>
                   {needsConfirm
                     ? 'ยืนยันบันทึกซ้ำ'

@@ -126,15 +126,15 @@ const ImportDialog: React.FC<Omit<ImportFromImageModalProps, 'isOpen'>> = ({
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex min-h-screen items-start justify-center p-2 sm:p-5">
-      <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-slate-200 overflow-hidden my-2 sm:my-6 flex flex-col">
-        <div className="bg-slate-900 text-white px-4 sm:px-6 py-3.5 flex items-center justify-between gap-3">
+      <div className="bg-white rounded-2xl max-w-3xl w-full shadow-2xl border border-slate-200 overflow-hidden my-2 sm:my-6 flex flex-col">
+        <div className="bg-slate-900 text-white px-5 sm:px-8 py-4 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shrink-0">
               <Camera className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base sm:text-lg font-bold">กรอกจากรูปหรือไฟล์หนังสือ</h3>
-              <p className="text-xs sm:text-sm text-slate-300">อ่านรถยนต์จากหนังสือหรือตารางแนบ แล้วให้ตรวจก่อนบันทึก</p>
+              <h3 className="text-lg sm:text-2xl font-bold">กรอกจากรูปหรือไฟล์หนังสือ</h3>
+              <p className="text-sm sm:text-base text-slate-300">อ่านรถยนต์จากหนังสือหรือตารางแนบ แล้วให้ตรวจก่อนบันทึก</p>
             </div>
           </div>
           <button
@@ -148,9 +148,9 @@ const ImportDialog: React.FC<Omit<ImportFromImageModalProps, 'isOpen'>> = ({
           </button>
         </div>
 
-        <div className="p-4 sm:p-6 space-y-4">
+        <div className="p-4 sm:p-8 space-y-5">
           {error && (
-            <div role="alert" className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-sm rounded-xl flex items-start gap-2">
+            <div role="alert" className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-base rounded-xl flex items-start gap-2">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
               <span>{error}</span>
             </div>
@@ -172,8 +172,8 @@ const ImportDialog: React.FC<Omit<ImportFromImageModalProps, 'isOpen'>> = ({
             }`}
           >
             <ImagePlus className="w-8 h-8 text-slate-400" />
-            <strong className="text-base text-slate-800">วางภาพ ลากไฟล์มาวาง หรือเลือกไฟล์</strong>
-            <span className="text-sm text-slate-600">
+            <strong className="text-lg text-slate-800">วางภาพ ลากไฟล์มาวาง หรือเลือกไฟล์</strong>
+            <span className="text-base text-slate-600">
               กด <kbd className="px-1.5 border border-slate-300 rounded bg-white text-xs">Ctrl</kbd> +{' '}
               <kbd className="px-1.5 border border-slate-300 rounded bg-white text-xs">V</kbd> เพื่อวางภาพแคปหน้าจอได้เลย
             </span>
@@ -182,7 +182,7 @@ const ImportDialog: React.FC<Omit<ImportFromImageModalProps, 'isOpen'>> = ({
                 type="button"
                 onClick={() => fileInput.current?.click()}
                 disabled={reading}
-                className="px-4 py-2 text-sm font-semibold rounded-xl border border-slate-300 bg-white hover:bg-slate-100 cursor-pointer disabled:opacity-50"
+                className="px-5 py-2.5 text-base font-semibold rounded-xl border border-slate-300 bg-white hover:bg-slate-100 cursor-pointer disabled:opacity-50"
               >
                 เลือกไฟล์
               </button>
@@ -190,12 +190,12 @@ const ImportDialog: React.FC<Omit<ImportFromImageModalProps, 'isOpen'>> = ({
                 type="button"
                 onClick={() => cameraInput.current?.click()}
                 disabled={reading}
-                className="px-4 py-2 text-sm font-semibold rounded-xl border border-slate-300 bg-white hover:bg-slate-100 cursor-pointer disabled:opacity-50"
+                className="px-5 py-2.5 text-base font-semibold rounded-xl border border-slate-300 bg-white hover:bg-slate-100 cursor-pointer disabled:opacity-50"
               >
                 ถ่ายรูปเอกสาร
               </button>
             </div>
-            <span className="text-xs text-slate-500">
+            <span className="text-sm text-slate-500">
               รับ JPG, PNG, PDF · ใส่ได้ไม่เกิน {MAX_IMPORT_FILES} ไฟล์ · อ่านเฉพาะรถยนต์ (ข้ามรถจักรยานยนต์)
             </span>
             <input
@@ -227,9 +227,9 @@ const ImportDialog: React.FC<Omit<ImportFromImageModalProps, 'isOpen'>> = ({
               {files.map((f) => (
                 <li key={f.id} className="flex items-center gap-3 px-3 py-2 border border-slate-200 rounded-xl">
                   <FileText className="w-5 h-5 text-slate-400 shrink-0" />
-                  <span className="flex-1 min-w-0 text-sm break-words">
+                  <span className="flex-1 min-w-0 text-base break-words">
                     {f.name}
-                    <span className="block text-xs text-slate-500">
+                    <span className="block text-sm text-slate-500">
                       {f.mimeType === 'application/pdf' ? 'PDF' : 'ภาพ'} · {f.sizeKb} KB
                     </span>
                   </span>
@@ -247,7 +247,7 @@ const ImportDialog: React.FC<Omit<ImportFromImageModalProps, 'isOpen'>> = ({
             </ul>
           )}
 
-          <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-sm">
+          <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-base">
             <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
             <span>
               ไฟล์จะถูกส่งไปให้ AI ของ Google อ่านเพื่อดึงข้อมูล (ถ้าใช้แพ็กเกจฟรี Google อาจนำไปปรับปรุงผลิตภัณฑ์ของเขา) ไม่ควรใช้กับเอกสารลับ
@@ -256,8 +256,8 @@ const ImportDialog: React.FC<Omit<ImportFromImageModalProps, 'isOpen'>> = ({
           </div>
         </div>
 
-        <div className="px-4 sm:px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2.5">
-          <span className="text-sm text-slate-600" aria-live="polite">
+        <div className="px-5 sm:px-8 py-4 border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2.5">
+          <span className="text-base text-slate-600" aria-live="polite">
             {reading
               ? `กำลังอ่านเอกสาร ${elapsed} วินาที (ปกติไม่เกิน 20-30 วินาที) อย่าปิดหน้านี้`
               : busy === 'preparing'
@@ -271,7 +271,7 @@ const ImportDialog: React.FC<Omit<ImportFromImageModalProps, 'isOpen'>> = ({
               type="button"
               onClick={onClose}
               disabled={reading}
-              className="px-4 py-2.5 border border-slate-300 hover:bg-slate-100 text-slate-700 text-sm font-semibold rounded-xl cursor-pointer disabled:opacity-50"
+              className="px-5 py-3 border border-slate-300 hover:bg-slate-100 text-slate-700 text-base font-semibold rounded-xl cursor-pointer disabled:opacity-50"
             >
               ยกเลิก
             </button>
@@ -279,7 +279,7 @@ const ImportDialog: React.FC<Omit<ImportFromImageModalProps, 'isOpen'>> = ({
               type="button"
               onClick={handleRead}
               disabled={files.length === 0 || busy !== null}
-              className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-xl shadow-md cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+              className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white text-base font-bold rounded-xl shadow-md cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
             >
               {reading && <Loader2 className="w-4 h-4 animate-spin" />}
               <span>{reading ? 'กำลังอ่าน...' : `อ่านข้อมูลจากไฟล์${files.length ? ` (${files.length})` : ''}`}</span>

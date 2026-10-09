@@ -97,13 +97,13 @@ export const DropdownSelect: React.FC<DropdownSelectProps> = ({
     <div className="relative w-full" ref={containerRef}>
       {/* Label and Hint */}
       <div className="flex items-center justify-between mb-1">
-        <label className="block text-xs font-semibold text-slate-700 flex items-center gap-1">
+        <label className="block text-sm font-semibold text-slate-700 flex items-center gap-1">
           {icon}
           <span>{label}</span>
           {required && <span className="text-rose-500 font-bold">*</span>}
         </label>
         {hint && (
-          <span className="text-[11px] text-slate-500 font-normal">
+          <span className="text-xs text-slate-500 font-normal">
             {hint}
           </span>
         )}
@@ -113,7 +113,7 @@ export const DropdownSelect: React.FC<DropdownSelectProps> = ({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className={`w-full text-left text-xs sm:text-sm border rounded-lg px-3 py-2 bg-white flex items-center justify-between gap-2 transition-all cursor-pointer ${
+        className={`w-full text-left text-base border rounded-lg px-3 py-2.5 bg-white flex items-center justify-between gap-2 transition-all cursor-pointer ${
           isOpen
             ? 'border-blue-500 ring-2 ring-blue-500/20'
             : 'border-slate-300 hover:border-slate-400'
@@ -147,7 +147,7 @@ export const DropdownSelect: React.FC<DropdownSelectProps> = ({
                 placeholder="พิมพ์เพื่อค้นหา..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full text-xs bg-transparent border-0 focus:outline-hidden text-slate-800 placeholder-slate-400"
+                className="w-full text-sm bg-transparent border-0 focus:outline-hidden text-slate-800 placeholder-slate-400"
               />
               {searchQuery && (
                 <button
@@ -167,7 +167,7 @@ export const DropdownSelect: React.FC<DropdownSelectProps> = ({
               <button
                 type="button"
                 onClick={() => handleSelect('')}
-                className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs sm:text-sm flex items-center justify-between transition-colors cursor-pointer italic ${
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm sm:text-base flex items-center justify-between transition-colors cursor-pointer italic ${
                   value === '' ? 'bg-blue-50 text-blue-700 font-bold' : 'text-slate-500 hover:bg-slate-100'
                 }`}
               >
@@ -176,7 +176,7 @@ export const DropdownSelect: React.FC<DropdownSelectProps> = ({
               </button>
             )}
             {filteredOptions.length === 0 ? (
-              <div className="py-4 text-center text-xs text-slate-400">
+              <div className="py-4 text-center text-sm text-slate-400">
                 ไม่พบข้อมูล &quot;{searchQuery}&quot;
               </div>
             ) : (
@@ -196,7 +196,7 @@ export const DropdownSelect: React.FC<DropdownSelectProps> = ({
                               key={item}
                               type="button"
                               onClick={() => handleSelect(item)}
-                              className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs sm:text-sm flex items-center justify-between transition-colors cursor-pointer ${
+                              className={`w-full text-left px-3 py-2 rounded-lg text-sm sm:text-base flex items-center justify-between transition-colors cursor-pointer ${
                                 isSelected
                                   ? 'bg-blue-50 text-blue-700 font-bold'
                                   : 'text-slate-700 hover:bg-slate-100'
@@ -218,7 +218,7 @@ export const DropdownSelect: React.FC<DropdownSelectProps> = ({
                     key={opt}
                     type="button"
                     onClick={() => handleSelect(opt)}
-                    className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs sm:text-sm flex items-center justify-between transition-colors cursor-pointer ${
+                    className={`w-full text-left px-3 py-2 rounded-lg text-sm sm:text-base flex items-center justify-between transition-colors cursor-pointer ${
                       isSelected
                         ? 'bg-blue-50 text-blue-700 font-bold'
                         : 'text-slate-700 hover:bg-slate-100'
