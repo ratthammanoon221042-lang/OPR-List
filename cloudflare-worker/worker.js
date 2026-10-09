@@ -44,6 +44,9 @@ const DEFAULT_GEMINI_FALLBACKS = 'gemini-flash-lite-latest';
 // ลดเวลา "คิด" ของ AI (การดึงข้อมูลจากเอกสารไม่ต้องคิดลึก) รุ่นต่างกันใช้พารามิเตอร์ต่างกัน จึงลองตามลำดับ
 // ถ้ารุ่นไหนไม่รับ (400 ที่พูดถึง thinking) จะข้ามไปแบบถัดไป และจำแบบที่ใช้ได้ไว้ ตั้ง GEMINI_THINKING=default เพื่อไม่ส่งเลย
 const THINKING_VARIANTS = [{ thinkingBudget: 0 }, { thinkingLevel: 'minimal' }, { thinkingLevel: 'low' }, null];
+const THINKING_LABELS = ['off', 'minimal', 'low', 'default'];
+// GEMINI_THINKING = off | minimal | low | default fixes one form (no probing, so no wasted requests); anything else probes
+const FIXED_THINKING = { off: 0, minimal: 1, low: 2, default: 3 };
 let thinkingIndex = 0;
 const ATTEMPTS_PER_MODEL = 2;
 const RETRY_DELAY_MS = 1_500;
@@ -272,11 +275,14 @@ async function handleExtract(body, env, scriptUrl, cors) {
     .filter((m) => m && m !== primary);
   const retryDelay = Number(env.GEMINI_RETRY_DELAY_MS ?? RETRY_DELAY_MS);
   const startedAt = Date.now();
-  let thinkingAt = env.GEMINI_THINKING === 'default' ? THINKING_VARIANTS.length - 1 : thinkingIndex;
+  const fixedThinking = FIXED_THINKING[String(env.GEMINI_THINKING || '').trim().toLowerCase()];
+  const probeThinking = fixedThinking === undefined;
+  let thinkingAt = probeThinking ? thinkingIndex : fixedThinking;
   let usedModel = '';
 
   let upstream = null;
   let last = null; // { status, detail } of the latest failed attempt, or { timedOut }
+  const outcomes = new Map(); // model -> how its last attempt ended, for the error message
   attempts: for (const model of [primary, ...fallbacks]) {
     for (let attempt = 0; attempt < ATTEMPTS_PER_MODEL; attempt++) {
       if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, retryDelay));
@@ -293,12 +299,13 @@ async function handleExtract(body, env, scriptUrl, cors) {
         });
       } catch (error) {
         last = { timedOut: !!error && (error.name === 'TimeoutError' || error.name === 'AbortError') };
+        outcomes.set(model, last.timedOut ? 'ตอบช้าเกินกำหนด' : 'ติดต่อไม่ได้');
         break; // a slow or unreachable model: go to the next one
       }
       if (res.ok) {
         upstream = res;
         usedModel = model;
-        if (env.GEMINI_THINKING !== 'default') thinkingIndex = thinkingAt;
+        if (probeThinking) thinkingIndex = thinkingAt;
         break attempts;
       }
 
@@ -312,9 +319,10 @@ async function handleExtract(body, env, scriptUrl, cors) {
         // no readable body
       }
       last = { status: res.status, detail };
+      outcomes.set(model, `HTTP ${res.status}${detail ? `: ${detail}` : ''}`);
       // A 400 may be this model not taking the "think less" setting we sent: try the next form of it on the
       // same model (a few quick calls at most; the working form is only remembered after a success)
-      if (res.status === 400 && thinkingAt < THINKING_VARIANTS.length - 1) {
+      if (probeThinking && res.status === 400 && thinkingAt < THINKING_VARIANTS.length - 1) {
         thinkingAt++;
         attempt--;
         continue;
@@ -327,19 +335,26 @@ async function handleExtract(body, env, scriptUrl, cors) {
   }
 
   if (!upstream) {
-    if (last && last.timedOut) return fail(504, 'server_error', 'AI อ่านเอกสารนานเกินกำหนด ลองใหม่หรือลดจำนวนหน้า', cors);
+    // Say what happened to every model that was tried, not only the last one
+    const summary = [...outcomes].map(([m, t]) => `${m} → ${t}`).join(' | ');
+    const detailText = summary ? ` [${summary}]` : '';
+    const statuses = [...outcomes.values()].map((t) => (/^HTTP (\d+)/.exec(t) || [])[1]);
+    if (statuses.includes('429')) {
+      return fail(429, 'rate_limited', `โควต้า AI ที่ใช้ฟรีหมดชั่วคราว รอสักพักแล้วลองใหม่ หรือกรอกเอง${detailText}`, cors);
+    }
+    if (statuses.some((c) => ['400', '401', '403', '404'].includes(c))) {
+      const keyOrName = statuses.some((c) => ['401', '403', '404'].includes(c));
+      const hint = keyOrName ? ' ตรวจสอบ GEMINI_API_KEY และชื่อรุ่น GEMINI_MODEL / GEMINI_FALLBACK_MODELS ที่ Cloudflare' : '';
+      return fail(502, 'server_error', `AI ปฏิเสธคำขอ${detailText}${hint}`, cors);
+    }
+    if (last && last.timedOut) {
+      return fail(504, 'server_error', `AI อ่านเอกสารนานเกินกำหนด ลองใหม่หรือลดจำนวนหน้า${detailText}`, cors);
+    }
     if (!last) return fail(502, 'server_error', 'ติดต่อ AI อ่านเอกสารไม่ได้', cors);
-    if (last.status === 429) {
-      return fail(429, 'rate_limited', 'โควต้า AI ที่ใช้ฟรีหมดชั่วคราว รอสักพักแล้วลองใหม่ หรือกรอกเอง', cors);
+    if (statuses.every((c) => c === '503')) {
+      return fail(502, 'server_error', `AI ของ Google กำลังมีผู้ใช้งานหนาแน่น (HTTP 503) ลองใหม่อีกครั้งในอีกสักครู่${detailText}`, cors);
     }
-    if ([400, 401, 403, 404].includes(last.status)) {
-      const hint = last.status === 400 ? '' : ' ตรวจสอบ GEMINI_API_KEY และชื่อรุ่น GEMINI_MODEL ที่ Cloudflare';
-      return fail(502, 'server_error', `AI ปฏิเสธคำขอ (HTTP ${last.status}${last.detail ? `: ${last.detail}` : ''})${hint}`, cors);
-    }
-    if (last.status === 503) {
-      return fail(502, 'server_error', 'AI ของ Google กำลังมีผู้ใช้งานหนาแน่น (HTTP 503) ลองใหม่อีกครั้งในอีกสักครู่', cors);
-    }
-    return fail(502, 'server_error', `AI ตอบกลับผิดปกติ (HTTP ${last.status}${last.detail ? `: ${last.detail}` : ''})`, cors);
+    return fail(502, 'server_error', `AI ตอบกลับผิดปกติ${detailText}`, cors);
   }
 
   let answer;
@@ -366,7 +381,7 @@ async function handleExtract(body, env, scriptUrl, cors) {
   const totalMs = Date.now() - requestStart;
   return reply(
     200,
-    { status: 'success', data: { ...cleanExtraction(data), meta: { model: usedModel, loginMs, aiMs: totalMs - loginMs, totalMs } } },
+    { status: 'success', data: { ...cleanExtraction(data), meta: { model: usedModel, thinking: THINKING_LABELS[thinkingAt], loginMs, aiMs: totalMs - loginMs, totalMs } } },
     cors
   );
 }

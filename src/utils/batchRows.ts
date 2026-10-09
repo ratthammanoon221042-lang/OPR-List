@@ -192,6 +192,8 @@ export interface ExtractedVehicle {
 /** How long the reading took, reported by the relay */
 export interface ReadMeta {
   model: string;
+  /** The "think less" form that worked (off / minimal / low / default) */
+  thinking?: string;
   loginMs: number;
   aiMs: number;
   totalMs: number;

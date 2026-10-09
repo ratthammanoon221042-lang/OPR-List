@@ -356,6 +356,26 @@ describe('extract (read cars from photos)', () => {
       expect(models).toHaveLength(4);
     });
 
+    it('names every model that was tried, so a retired backup does not hide why the main one failed', async () => {
+      const retired = () =>
+        new Response(JSON.stringify({ error: { code: 404, status: 'NOT_FOUND', message: 'This model models/gemini-2.5-flash is no longer available to new users.' } }), { status: 404 });
+      sequence([() => new Response('{}', { status: 429 }), retired]);
+      const res = await extract({}, { ...fast, GEMINI_MODEL: 'main-model', GEMINI_FALLBACK_MODELS: 'gemini-2.5-flash' });
+      expect(res.status).toBe(429);
+      const message = (await res.json()).message;
+      expect(message).toContain('main-model → HTTP 429');
+      expect(message).toContain('gemini-2.5-flash → HTTP 404');
+      expect(message).toContain('โควต้า');
+    });
+
+    it('GEMINI_THINKING fixes one form: no probing after a 400, and the form is reported', async () => {
+      const models = sequence([() => new Response(JSON.stringify({ error: { message: 'bad' } }), { status: 400 }), ok]);
+      const res = await extract({}, { ...fast, GEMINI_THINKING: 'minimal' });
+      expect(res.status).toBe(200); // the backup model answered
+      expect(models).toEqual(['gemini-flash-latest', 'gemini-flash-lite-latest']);
+      expect((await res.json()).data.meta.thinking).toBe('minimal');
+    });
+
     it('shows Google\'s own reason for an unexpected error', async () => {
       const odd = () => new Response(JSON.stringify({ error: { status: 'INTERNAL_X' } }), { status: 418 });
       sequence([odd, odd]);
@@ -497,12 +517,22 @@ describe('extract (read cars from photos)', () => {
         );
       })
     );
-    expect((await extract({}, { GEMINI_RETRY_DELAY_MS: '0' })).status).toBe(200);
+    vi.resetModules(); // a fresh worker: its own rate-limit counter and remembered thinking form
+    const fresh = (await import('./worker.js')).default;
+    const call = () =>
+      fresh.fetch(
+        new Request('https://proxy.example/', {
+          method: 'POST',
+          body: JSON.stringify({ action: 'extract', token: `tok-last-${++n}`, today: '2026-10-09', files: [file] }),
+        }),
+        { ...env, GEMINI_API_KEY: 'key-123', GEMINI_RETRY_DELAY_MS: '0' }
+      );
+    expect((await call()).status).toBe(200);
     expect(seen).toEqual([{ thinkingBudget: 0 }, { thinkingLevel: 'minimal' }, { thinkingLevel: 'low' }]);
     // next request starts with the form that worked
     seen.length = 0;
     calls = 99;
-    await extract({}, { GEMINI_RETRY_DELAY_MS: '0' });
+    await call();
     expect(seen).toEqual([{ thinkingLevel: 'low' }]);
   });
 
