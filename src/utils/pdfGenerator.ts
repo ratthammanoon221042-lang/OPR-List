@@ -22,10 +22,32 @@ const FIRST_PAGE_TABLE_Y = 245;
 const NEXT_PAGE_TABLE_Y = 130;
 
 const FONT = '"Prompt", "Sarabun", "TH Sarabun New", -apple-system, sans-serif';
-const COL_WIDTHS = [55, 125, 85, 190, 140, 210, 315]; // = 1120
 const TABLE_FONT_PX = 20; // header and every cell: the same size, bold
-const COL_HEADERS = ['ลำดับ', 'ยี่ห้อ', 'สี', 'หน่วยงาน', 'ทะเบียน', 'จังหวัด', 'วันที่ขอจอด'];
-const TABLE_W = COL_WIDTHS.reduce((a, b) => a + b, 0);
+
+/** 'download' = PDF file (every column); 'print' = the printout (no parking floor and no department) */
+export type ReportLayout = 'download' | 'print';
+type ColKey = 'index' | 'brand' | 'color' | 'department' | 'plate' | 'province' | 'floor' | 'dates';
+const COLUMNS: Record<ReportLayout, { key: ColKey; header: string; width: number }[]> = {
+  download: [
+    { key: 'index', header: 'ลำดับ', width: 55 },
+    { key: 'brand', header: 'ยี่ห้อ', width: 110 },
+    { key: 'color', header: 'สี', width: 75 },
+    { key: 'department', header: 'หน่วยงาน', width: 190 },
+    { key: 'plate', header: 'ทะเบียน', width: 130 },
+    { key: 'province', header: 'จังหวัด', width: 175 },
+    { key: 'floor', header: 'ชั้นที่จอด', width: 95 },
+    { key: 'dates', header: 'วันที่ขอจอด', width: 290 },
+  ], // = 1120
+  print: [
+    { key: 'index', header: 'ลำดับ', width: 60 },
+    { key: 'brand', header: 'ยี่ห้อ', width: 170 },
+    { key: 'color', header: 'สี', width: 120 },
+    { key: 'plate', header: 'ทะเบียน', width: 230 },
+    { key: 'province', header: 'จังหวัด', width: 230 },
+    { key: 'dates', header: 'วันที่ขอจอด', width: 310 },
+  ], // = 1120
+};
+const TABLE_W = COLUMNS.download.reduce((a, b) => a + b.width, 0); // both layouts are the same total width
 
 /** How many table rows fit on a page: page 1 has the big title block, later pages a small one */
 export function rowsPerPage(isFirstPage: boolean): number {
@@ -76,8 +98,10 @@ function drawPage(
   firstIndex: number,
   pageNo: number,
   pageCount: number,
-  summary: { total: number; dateText: string; asOfText: string }
+  summary: { total: number; b1: number; b2: number; noFloor: number; dateText: string; asOfText: string },
+  layout: ReportLayout
 ): void {
+  const cols = COLUMNS[layout];
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, PAGE_W, PAGE_H);
   ctx.textAlign = 'center';
@@ -95,7 +119,9 @@ function drawPage(
     ctx.font = `bold 16px ${FONT}`;
     ctx.fillStyle = '#1e40af';
     ctx.fillText(
-      `รวมทั้งหมด ${summary.total} คัน`,
+      layout === 'print'
+        ? `รวมทั้งหมด ${summary.total} คัน`
+        : `รวมทั้งหมด ${summary.total} คัน   |   ชั้น B1: ${summary.b1} คัน   |   ชั้น B2: ${summary.b2} คัน${summary.noFloor > 0 ? `   |   ไม่ระบุชั้น: ${summary.noFloor} คัน` : ''}`,
       PAGE_W / 2,
       190
     );
@@ -124,17 +150,17 @@ function drawPage(
   let x = MARGIN_X;
   ctx.fillStyle = '#0f172a';
   ctx.font = `bold ${TABLE_FONT_PX}px ${FONT}`;
-  COL_HEADERS.forEach((header, i) => {
+  cols.forEach(({ header, width }, i) => {
     ctx.textAlign = 'center';
     ctx.fillStyle = '#0f172a';
-    ctx.fillText(header, x + COL_WIDTHS[i] / 2, tableY + 28);
+    ctx.fillText(header, x + width / 2, tableY + 28);
     if (i > 0) {
       ctx.beginPath();
       ctx.moveTo(x, tableY);
       ctx.lineTo(x, tableY + HEADER_H);
       ctx.stroke();
     }
-    x += COL_WIDTHS[i];
+    x += width;
   });
 
   // Rows
@@ -164,31 +190,29 @@ function drawPage(
       // Every cell uses the same larger, bold font and colour
       const cellFont = `bold ${TABLE_FONT_PX}px ${FONT}`;
       const cellColor = '#0f172a';
-      const cells: { text: string; align: CanvasTextAlign; font: string; color: string }[] = [
-        { text: String(firstIndex + i + 1), align: 'center', font: cellFont, color: cellColor },
-        { text: permit.vehicleBrand || '-', align: 'left', font: cellFont, color: cellColor },
-        { text: permit.vehicleColor || '-', align: 'left', font: cellFont, color: cellColor },
-        {
+      const make: Record<ColKey, { text: string; align: CanvasTextAlign }> = {
+        index: { text: String(firstIndex + i + 1), align: 'center' },
+        brand: { text: permit.vehicleBrand || '-', align: 'left' },
+        color: { text: permit.vehicleColor || '-', align: 'left' },
+        department: {
           text: permit.department
             ? `${permit.department}${permit.subDepartment ? ` (${permit.subDepartment})` : ''}`
             : permit.subDepartment || '-',
           align: 'left',
-          font: cellFont,
-          color: cellColor,
         },
-        { text: permit.licensePlate.replace(/\s+/g, ''), align: 'center', font: cellFont, color: cellColor },
-        { text: permit.province || '-', align: 'center', font: cellFont, color: cellColor },
-        {
+        plate: { text: permit.licensePlate.replace(/\s+/g, ''), align: 'center' },
+        province: { text: permit.province || '-', align: 'center' },
+        floor: { text: permit.parkingFloor || '-', align: 'center' },
+        dates: {
           text: `${formatThaiDate(permit.startDate, 'short')} - ${formatThaiDate(permit.endDate, 'short')}`,
           align: 'center',
-          font: cellFont,
-          color: cellColor,
         },
-      ];
+      };
+      const cells = cols.map((col) => ({ ...make[col.key], font: cellFont, color: cellColor }));
 
       let cx = MARGIN_X;
       cells.forEach((cell, c) => {
-        const w = COL_WIDTHS[c];
+        const w = cols[c].width;
         if (c > 0) {
           ctx.strokeStyle = '#cbd5e1';
           ctx.beginPath();
@@ -223,13 +247,17 @@ function drawPage(
 export async function renderReportPages(
   permits: ParkingPermit[],
   targetDate: string,
-  dataAsOf?: Date | null
+  dataAsOf?: Date | null,
+  layout: ReportLayout = 'download'
 ): Promise<string[]> {
   await ensureFontsLoaded();
 
   const pages = paginate(permits);
   const summary = {
     total: permits.length,
+    b1: permits.filter((p) => p.parkingFloor === 'B1').length,
+    b2: permits.filter((p) => p.parkingFloor === 'B2').length,
+    noFloor: permits.filter((p) => !p.parkingFloor).length,
     dateText: formatThaiDate(targetDate, 'long'),
     asOfText: dataAsOf ? ` · ข้อมูล ณ ${formatThaiDateTime(dataAsOf)}` : '',
   };
@@ -243,7 +271,7 @@ export async function renderReportPages(
 
   let firstIndex = 0;
   return pages.map((rows, i) => {
-    drawPage(ctx, rows, firstIndex, i + 1, pages.length, summary);
+    drawPage(ctx, rows, firstIndex, i + 1, pages.length, summary, layout);
     firstIndex += rows.length;
     return canvas.toDataURL('image/jpeg', 0.92);
   });
@@ -254,7 +282,7 @@ export async function downloadParkingReportPdf(
   targetDate: string,
   dataAsOf?: Date | null
 ): Promise<void> {
-  const images = await renderReportPages(permits, targetDate, dataAsOf);
+  const images = await renderReportPages(permits, targetDate, dataAsOf, 'download');
   const { jsPDF } = await import('jspdf');
 
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });

@@ -409,7 +409,7 @@ export default function App() {
   const requestPrint = async (date: string) => {
     try {
       const active = permits.filter((p) => isPermitActiveOnDate(p, date));
-      const pages = await renderReportPages(active, date, lastSyncedAt);
+      const pages = await renderReportPages(active, date, lastSyncedAt, 'print');
       // Make sure every image is ready, otherwise the printout can come out blank
       await Promise.all(
         pages.map((src) => {
