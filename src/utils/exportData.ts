@@ -9,7 +9,6 @@ export const EXPORT_HEADERS = [
   'หน่วยงานย่อย',
   'หมายเลขทะเบียน',
   'จังหวัด',
-  'ชั้นที่จอด',
   'วันที่ขอจอด',
 ];
 
@@ -22,7 +21,6 @@ export function permitToExportRow(permit: ParkingPermit, index: number): (string
     permit.subDepartment || '-',
     permit.licensePlate.replace(/\s+/g, ''),
     permit.province || '-',
-    permit.parkingFloor || '-',
     `${formatThaiDate(permit.startDate, 'short')} - ${formatThaiDate(permit.endDate, 'short')}`,
   ];
 }
@@ -64,28 +62,32 @@ export async function downloadExcel(permits: ParkingPermit[], date: string): Pro
   // Loaded on demand so the Excel writer is not part of the initial bundle
   const { default: writeXlsxFile } = await import('write-excel-file/universal');
 
+  // Every cell uses the same larger, bold font
+  const FONT_SIZE = 14;
   const header = EXPORT_HEADERS.map((value) => ({
     value,
     fontWeight: 'bold' as const,
+    fontSize: FONT_SIZE,
     align: 'center' as const,
   }));
   const body = permits.map((p, i) =>
     permitToExportRow(p, i).map((value) =>
-      typeof value === 'number' ? { value, type: Number } : { value, type: String }
+      typeof value === 'number'
+        ? { value, type: Number, fontWeight: 'bold' as const, fontSize: FONT_SIZE }
+        : { value, type: String, fontWeight: 'bold' as const, fontSize: FONT_SIZE }
     )
   );
 
   const blob = await writeXlsxFile([header, ...body], {
     columns: [
-      { width: 8 },
+      { width: 9 },
+      { width: 16 },
       { width: 14 },
-      { width: 12 },
-      { width: 16 },
-      { width: 18 },
-      { width: 16 },
-      { width: 18 },
-      { width: 10 },
-      { width: 26 },
+      { width: 20 },
+      { width: 22 },
+      { width: 20 },
+      { width: 22 },
+      { width: 34 },
     ],
     sheet: `ประจำวันที่ ${date}`,
   }).toBlob();

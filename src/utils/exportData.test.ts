@@ -35,7 +35,7 @@ describe('buildCsv', () => {
     expect(csv.startsWith('﻿')).toBe(true);
     const lines = csv.slice(1).split('\r\n');
     expect(lines).toHaveLength(3);
-    expect(lines[1]).toBe('"1","Toyota","ขาว","สร.","-","1กข4590","กรุงเทพมหานคร","B1","6 ต.ค. 2569 - 8 ต.ค. 2569"');
+    expect(lines[1]).toBe('"1","Toyota","ขาว","สร.","-","1กข4590","กรุงเทพมหานคร","6 ต.ค. 2569 - 8 ต.ค. 2569"');
     expect(lines[2]).toContain('"Ho""nda"');
   });
 });

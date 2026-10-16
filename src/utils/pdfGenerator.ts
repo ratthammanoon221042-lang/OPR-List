@@ -22,8 +22,9 @@ const FIRST_PAGE_TABLE_Y = 245;
 const NEXT_PAGE_TABLE_Y = 130;
 
 const FONT = '"Prompt", "Sarabun", "TH Sarabun New", -apple-system, sans-serif';
-const COL_WIDTHS = [55, 175, 110, 180, 175, 150, 95, 180]; // = 1120
-const COL_HEADERS = ['ลำดับ', 'ยี่ห้อ', 'สี', 'หน่วยงาน', 'ทะเบียน', 'จังหวัด', 'ชั้นที่จอด', 'วันที่ขอจอด'];
+const COL_WIDTHS = [55, 125, 85, 190, 140, 210, 315]; // = 1120
+const TABLE_FONT_PX = 20; // header and every cell: the same size, bold
+const COL_HEADERS = ['ลำดับ', 'ยี่ห้อ', 'สี', 'หน่วยงาน', 'ทะเบียน', 'จังหวัด', 'วันที่ขอจอด'];
 const TABLE_W = COL_WIDTHS.reduce((a, b) => a + b, 0);
 
 /** How many table rows fit on a page: page 1 has the big title block, later pages a small one */
@@ -61,6 +62,7 @@ async function ensureFontsLoaded(): Promise<void> {
       document.fonts.load(`15px ${FONT}`),
       document.fonts.load(`500 15px ${FONT}`),
       document.fonts.load(`bold 16px ${FONT}`),
+      document.fonts.load(`bold ${TABLE_FONT_PX}px ${FONT}`),
     ]);
     await document.fonts.ready;
   } catch {
@@ -74,7 +76,7 @@ function drawPage(
   firstIndex: number,
   pageNo: number,
   pageCount: number,
-  summary: { total: number; b1: number; b2: number; noFloor: number; dateText: string; asOfText: string }
+  summary: { total: number; dateText: string; asOfText: string }
 ): void {
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, PAGE_W, PAGE_H);
@@ -93,7 +95,7 @@ function drawPage(
     ctx.font = `bold 16px ${FONT}`;
     ctx.fillStyle = '#1e40af';
     ctx.fillText(
-      `รวมทั้งหมด ${summary.total} คัน   |   ชั้น B1: ${summary.b1} คัน   |   ชั้น B2: ${summary.b2} คัน${summary.noFloor > 0 ? `   |   ไม่ระบุชั้น: ${summary.noFloor} คัน` : ''}`,
+      `รวมทั้งหมด ${summary.total} คัน`,
       PAGE_W / 2,
       190
     );
@@ -121,7 +123,7 @@ function drawPage(
 
   let x = MARGIN_X;
   ctx.fillStyle = '#0f172a';
-  ctx.font = `bold 16px ${FONT}`;
+  ctx.font = `bold ${TABLE_FONT_PX}px ${FONT}`;
   COL_HEADERS.forEach((header, i) => {
     ctx.textAlign = 'center';
     ctx.fillStyle = '#0f172a';
@@ -158,37 +160,29 @@ function drawPage(
       ctx.lineWidth = 1;
       ctx.strokeRect(MARGIN_X, y, TABLE_W, ROW_H);
 
-      const textY = y + 29;
+      const textY = y + 30;
+      // Every cell uses the same larger, bold font and colour
+      const cellFont = `bold ${TABLE_FONT_PX}px ${FONT}`;
+      const cellColor = '#0f172a';
       const cells: { text: string; align: CanvasTextAlign; font: string; color: string }[] = [
-        { text: String(firstIndex + i + 1), align: 'center', font: `15px ${FONT}`, color: '#0f172a' },
-        { text: permit.vehicleBrand || '-', align: 'left', font: `500 15px ${FONT}`, color: '#0f172a' },
-        { text: permit.vehicleColor || '-', align: 'left', font: `15px ${FONT}`, color: '#334155' },
+        { text: String(firstIndex + i + 1), align: 'center', font: cellFont, color: cellColor },
+        { text: permit.vehicleBrand || '-', align: 'left', font: cellFont, color: cellColor },
+        { text: permit.vehicleColor || '-', align: 'left', font: cellFont, color: cellColor },
         {
           text: permit.department
             ? `${permit.department}${permit.subDepartment ? ` (${permit.subDepartment})` : ''}`
             : permit.subDepartment || '-',
           align: 'left',
-          font: `14px ${FONT}`,
-          color: '#475569',
+          font: cellFont,
+          color: cellColor,
         },
-        {
-          text: permit.licensePlate.replace(/\s+/g, ''),
-          align: 'center',
-          font: `bold 18px ${FONT}`,
-          color: '#0f172a',
-        },
-        { text: permit.province || '-', align: 'center', font: `15px ${FONT}`, color: '#0f172a' },
-        {
-          text: permit.parkingFloor || '-',
-          align: 'center',
-          font: `bold 17px ${FONT}`,
-          color: permit.parkingFloor === 'B1' ? '#1d4ed8' : permit.parkingFloor === 'B2' ? '#4338ca' : '#64748b',
-        },
+        { text: permit.licensePlate.replace(/\s+/g, ''), align: 'center', font: cellFont, color: cellColor },
+        { text: permit.province || '-', align: 'center', font: cellFont, color: cellColor },
         {
           text: `${formatThaiDate(permit.startDate, 'short')} - ${formatThaiDate(permit.endDate, 'short')}`,
           align: 'center',
-          font: `13px ${FONT}`,
-          color: '#334155',
+          font: cellFont,
+          color: cellColor,
         },
       ];
 
@@ -236,9 +230,6 @@ export async function renderReportPages(
   const pages = paginate(permits);
   const summary = {
     total: permits.length,
-    b1: permits.filter((p) => p.parkingFloor === 'B1').length,
-    b2: permits.filter((p) => p.parkingFloor === 'B2').length,
-    noFloor: permits.filter((p) => !p.parkingFloor).length,
     dateText: formatThaiDate(targetDate, 'long'),
     asOfText: dataAsOf ? ` · ข้อมูล ณ ${formatThaiDateTime(dataAsOf)}` : '',
   };
